@@ -46,9 +46,7 @@ npm run dev
 
 `npm run build` gera `dist/` (roteamento por hash, `base: './'` — funciona em qualquer host estático).
 
-- **Vercel**: `npx vercel --prod` (framework Vite; variáveis `VITE_*` em Settings → Environment Variables)
-- **Netlify**: arraste a pasta `dist/` em app.netlify.com/drop ou `npx netlify deploy --prod --dir=dist`
-- **GitHub Pages**: publique `dist/` na branch `gh-pages` (`npx gh-pages -d dist`)
+- **Vercel (produção)**: repositório `avlupina/avl-finance` importado em vercel.com; `vercel.json` já define framework/saída. Variáveis em Settings → Environment Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_PLUGGY_SANDBOX`. Cada push em `main` publica em produção; branches ganham URL de preview.
 
 Depois de publicar, em **Supabase → Authentication → URL Configuration** defina *Site URL* e *Redirect URLs* com a URL do app (confirmação de e-mail e recuperação de senha).
 

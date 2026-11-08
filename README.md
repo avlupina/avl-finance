@@ -52,7 +52,8 @@ Depois de publicar, em **Supabase → Authentication → URL Configuration** def
 
 ## Open Finance (Pluggy)
 
-1. Crie uma aplicação em https://dashboard.pluggy.ai e copie `CLIENT_ID` / `CLIENT_SECRET`.
+1. **Uso pessoal (gratuito) — Meu Pluggy**: crie conta em https://meu.pluggy.ai e conecte seus bancos lá (Open Finance oficial). Em https://dashboard.pluggy.ai crie a aplicação, inclua o conector **MeuPluggy** na lista de conectores e crie a *Development Application* — ela fornece `CLIENT_ID` / `CLIENT_SECRET`. No app, conecte via conector MeuPluggy (uma autorização por banco). O sync identifica o banco real de cada conta pelo código COMPE / nome da instituição.
+   **Uso comercial**: aplicação normal no dashboard (plano pago) com os conectores diretos dos bancos.
 2. Em **Supabase → Edge Functions → Secrets**, cadastre `PLUGGY_CLIENT_ID`, `PLUGGY_CLIENT_SECRET` e (opcional) `PLUGGY_WEBHOOK_SECRET`.
 3. No app, **Integrações → Conectar instituição**: abre o widget da Pluggy, você autentica no banco (ex.: Banco do Brasil PF) e autoriza o consentimento. Ao concluir, `pluggy-sync` importa contas, extrato (12 meses) e investimentos.
 4. Webhook (atualizações automáticas): `https://wllbunqisamgxfjlwlzi.supabase.co/functions/v1/pluggy-webhook` — já é informado no `connect_token`; pode também ser cadastrado no dashboard da Pluggy.

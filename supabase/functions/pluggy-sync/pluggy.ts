@@ -103,6 +103,18 @@ export function mapTipoInvestimento(inv: any): string {
   return "outro";
 }
 
+/** Tenta identificar o banco real da conta (útil quando o conector é um proxy, como o MeuPluggy). */
+export function resolveBanco<T extends { id: string; nome: string; codigo_compe: string | null }>(bancos: T[], acc: any): T | undefined {
+  const compe: string | undefined = acc.bankData?.transferNumber?.split("/")?.[0]?.replace(/\D/g, "");
+  if (compe) {
+    const b = bancos.find((x) => x.codigo_compe && Number(x.codigo_compe) === Number(compe));
+    if (b) return b;
+  }
+  const texto = `${acc.institution?.name ?? ""} ${acc.marketingName ?? ""} ${acc.name ?? ""}`.toLowerCase();
+  return bancos.find((x) => texto.includes(x.nome.toLowerCase().split(" ")[0]) && x.nome.split(" ")[0].length > 3)
+    ?? bancos.find((x) => texto.includes(x.nome.toLowerCase()));
+}
+
 /** Sincroniza um item Pluggy (contas, transações e investimentos) para um workspace. */
 export async function syncItem(opts: {
   admin: SupabaseClient;
@@ -146,18 +158,20 @@ export async function syncItem(opts: {
   const resumo: Record<string, number> = { contas: 0, lancamentos: 0, investimentos: 0 };
 
   try {
-    // banco correspondente (pelo connector id) se cadastrado
-    const { data: banco } = await admin
+    // bancos cadastrados no workspace — usados para vincular cada conta à instituição real
+    const { data: bancosWs } = await admin
       .from("bancos")
-      .select("id")
-      .eq("workspace_id", workspaceId)
-      .eq("pluggy_connector_id", item.connector?.id ?? -1)
-      .maybeSingle();
+      .select("id, nome, codigo_compe, pluggy_connector_id")
+      .eq("workspace_id", workspaceId);
+    const bancos = (bancosWs ?? []) as { id: string; nome: string; codigo_compe: string | null; pluggy_connector_id: number | null }[];
+    const bancoPorConector = bancos.find((b) => b.pluggy_connector_id === item.connector?.id);
+    const isProxy = /meu ?pluggy/i.test(item.connector?.name ?? "");
 
     // 2) contas
     const accounts = await pluggyGet(apiKey, `/accounts?itemId=${itemId}`);
     const contaIdPorExternal: Record<string, string> = {};
     for (const acc of accounts.results ?? []) {
+      const banco = bancoPorConector ?? resolveBanco(bancos, acc);
       const row = {
         workspace_id: workspaceId,
         banco_id: banco?.id ?? null,
@@ -231,7 +245,7 @@ export async function syncItem(opts: {
         nome: i.name ?? i.code ?? "Investimento",
         tipo: mapTipoInvestimento(i),
         subtipo: i.subtype ?? null,
-        instituicao: item.connector?.name ?? null,
+        instituicao: i.issuer ?? i.institution?.name ?? (isProxy ? null : item.connector?.name) ?? null,
         codigo: i.code ?? null,
         quantidade: i.quantity ?? null,
         valor_aplicado: i.amountOriginal ?? i.amount ?? 0,

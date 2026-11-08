@@ -35,9 +35,11 @@ export default function Analise() {
     for (const l of lanc) {
       const v = Number(l.valor); const k = l.competencia.slice(0, 10)
       porMes[k] ??= { receitas: 0, despesas: 0, fixas: 0, variaveis: 0 }
-      if (l.tipo === 'receita') { totR += v; porMes[k].receitas += v; continue }
-      totD += v; nDesp++; porMes[k].despesas += v
       const p = l.plano_conta_id ? pl[l.plano_conta_id] : undefined
+      const ehReceita = p ? p.tipo === 'receita' : l.tipo === 'receita'
+      if (ehReceita) { const s = l.tipo === 'receita' ? 1 : -1; totR += s * v; porMes[k].receitas += s * v; continue }
+      if (l.tipo === 'receita') { totD -= v; porMes[k].despesas -= v; continue } // estorno
+      totD += v; nDesp++; porMes[k].despesas += v
       const nome = p ? p.nome : (l.categoria_origem ?? 'Sem categoria')
       porCat[nome] = (porCat[nome] ?? 0) + v
       const g = p?.parent_id ? pl[p.parent_id]?.nome : (p?.nome ?? 'Sem categoria'); porGrupo[g ?? 'Sem categoria'] = (porGrupo[g ?? 'Sem categoria'] ?? 0) + v

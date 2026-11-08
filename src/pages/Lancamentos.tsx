@@ -20,6 +20,7 @@ export default function Lancamentos() {
   const [contaF, setContaF] = useState('')
   const [planoF, setPlanoF] = useState('')
   const [busca, setBusca] = useState('')
+  const [soSemCat, setSoSemCat] = useState(false)
   const [modal, setModal] = useState<null | { id?: string; form: ReturnType<typeof empty> }>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -41,11 +42,11 @@ export default function Lancamentos() {
     return data as Lancamento[]
   }, [ws, ini, fim, tipo, contaF, planoF])
 
-  const rows = useMemo(() => (q.data ?? []).filter(l => !busca || l.descricao.toLowerCase().includes(busca.toLowerCase()) || (l.categoria_origem ?? '').toLowerCase().includes(busca.toLowerCase())), [q.data, busca])
+  const rows = useMemo(() => (q.data ?? []).filter(l => (!soSemCat || !l.plano_conta_id) && (!busca || l.descricao.toLowerCase().includes(busca.toLowerCase()) || (l.categoria_origem ?? '').toLowerCase().includes(busca.toLowerCase()))), [q.data, busca, soSemCat])
   const tot = useMemo(() => rows.reduce((a, l) => { if (l.status === 'pendente') return a; if (l.tipo === 'receita') a.r += Number(l.valor); else if (l.tipo === 'despesa') a.d += Number(l.valor); return a }, { r: 0, d: 0 }), [rows])
   const semCategoria = rows.filter(r => !r.plano_conta_id).length
 
-  const planosFolha = (t?: string) => (aux.data?.planos ?? []).filter(p => p.parent_id && (!t || p.tipo === t || (t === 'transferencia' && p.tipo === 'transferencia') || (t === 'despesa' && p.tipo === 'investimento')))
+  const planosFolha = (t?: string) => (aux.data?.planos ?? []).filter(p => p.parent_id && (!t || p.tipo === t || p.tipo === 'transferencia' || (t === 'despesa' && p.tipo === 'investimento') || (t === 'receita' && p.tipo === 'despesa')))
 
   const salvar = async (e: FormEvent) => {
     e.preventDefault(); if (!modal) return; setErr(null)
@@ -68,7 +69,11 @@ export default function Lancamentos() {
   }
 
   const categorizar = async (l: Lancamento, plano: string) => {
-    await supabase.from('lancamentos').update({ plano_conta_id: plano || null }).eq('id', l.id); q.refetch()
+    const p = aux.data?.planos.find(x => x.id === plano)
+    const patch: Record<string, unknown> = { plano_conta_id: plano || null }
+    if (p?.tipo === 'transferencia') patch.tipo = 'transferencia'
+    else if (l.tipo === 'transferencia' && p) patch.tipo = p.tipo === 'receita' ? 'receita' : 'despesa'
+    await supabase.from('lancamentos').update(patch).eq('id', l.id); q.refetch()
   }
 
   const exportar = () => downloadCSV(`lancamentos_${ini}_${fim}.csv`, rows.map(l => ({
@@ -90,6 +95,7 @@ export default function Lancamentos() {
           <Field label="Conta"><select className="input" value={contaF} onChange={e => setContaF(e.target.value)}><option value="">Todas</option>{aux.data?.contas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></Field>
           <Field label="Categoria"><select className="input" value={planoF} onChange={e => setPlanoF(e.target.value)}><option value="">Todas</option>{planosFolha().map(p => <option key={p.id} value={p.id}>{p.codigo} {p.nome}</option>)}</select></Field>
           <Field label="Buscar" className="flex-1 min-w-[180px]"><input className="input" placeholder="Descrição..." value={busca} onChange={e => setBusca(e.target.value)} /></Field>
+          <label className="text-sm flex items-center gap-2 pb-2 whitespace-nowrap"><input type="checkbox" checked={soSemCat} onChange={e => setSoSemCat(e.target.checked)} /> Só sem categoria</label>
         </div>
       </PageHeader>
 

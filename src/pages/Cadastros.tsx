@@ -1,12 +1,12 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Plus, Pencil, Trash2, ChevronRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronRight, Wand2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, ErrorBox, Field, Loading, Modal, PageHeader, Tabs } from '../components/ui'
 import type { Banco, PlanoConta } from '../lib/types'
 
-type Tab = 'plano' | 'bancos'
+type Tab = 'plano' | 'bancos' | 'mapeamento'
 const TIPO_PLANO = { receita: 'Receita', despesa: 'Despesa', investimento: 'Investimento', transferencia: 'Transferência' }
 
 export default function Cadastros() {
@@ -14,9 +14,9 @@ export default function Cadastros() {
   return (
     <div>
       <PageHeader title="Cadastros">
-        <Tabs tabs={[{ key: 'plano', label: 'Plano de Contas' }, { key: 'bancos', label: 'Bancos' }]} value={tab} onChange={setTab} />
+        <Tabs tabs={[{ key: 'plano', label: 'Plano de Contas' }, { key: 'bancos', label: 'Bancos' }, { key: 'mapeamento', label: 'Categorias do Agregador' }]} value={tab} onChange={setTab} />
       </PageHeader>
-      {tab === 'plano' ? <PlanoContas /> : <Bancos />}
+      {tab === 'plano' ? <PlanoContas /> : tab === 'bancos' ? <Bancos /> : <Mapeamento />}
     </div>
   )
 }
@@ -160,6 +160,79 @@ function Bancos() {
           <div className="col-span-2 flex justify-end gap-2"><button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button><button className="btn btn-primary">Salvar</button></div>
         </form>}
       </Modal>
+    </div>
+  )
+}
+
+/* ---------------- Mapeamento de categorias do agregador ---------------- */
+interface Map { id?: string; categoria_origem: string; plano_conta_id: string | null; tipo_override: 'receita' | 'despesa' | 'transferencia' | null; qtd: number; sem_categoria: number }
+function Mapeamento() {
+  const { workspace, canEditModule } = useAuth()
+  const ws = workspace!.id
+  const podeEditar = canEditModule('cadastros')
+  const [msg, setMsg] = useState<string | null>(null)
+  const q = useQuery(async () => {
+    const [m, p, l] = await Promise.all([
+      supabase.from('categoria_mapeamentos').select('*').eq('workspace_id', ws),
+      supabase.from('plano_contas').select('*').eq('workspace_id', ws).eq('ativo', true).order('codigo'),
+      supabase.from('lancamentos').select('categoria_origem, plano_conta_id').eq('workspace_id', ws).neq('origem', 'manual').not('categoria_origem', 'is', null).limit(50000),
+    ])
+    const planos = (p.data ?? []) as PlanoConta[]
+    const stats: Record<string, { qtd: number; sem: number }> = {}
+    for (const r of (l.data ?? []) as { categoria_origem: string; plano_conta_id: string | null }[]) { stats[r.categoria_origem] ??= { qtd: 0, sem: 0 }; stats[r.categoria_origem].qtd++; if (!r.plano_conta_id) stats[r.categoria_origem].sem++ }
+    const maps = (m.data ?? []) as { id: string; categoria_origem: string; plano_conta_id: string | null; tipo_override: Map['tipo_override'] }[]
+    const cats = new Set([...Object.keys(stats), ...maps.map(x => x.categoria_origem)])
+    const rows: Map[] = [...cats].map(c => { const mm = maps.find(x => x.categoria_origem === c); return { id: mm?.id, categoria_origem: c, plano_conta_id: mm?.plano_conta_id ?? null, tipo_override: mm?.tipo_override ?? null, qtd: stats[c]?.qtd ?? 0, sem_categoria: stats[c]?.sem ?? 0 } })
+    rows.sort((a, b) => (b.sem_categoria - a.sem_categoria) || (b.qtd - a.qtd))
+    return { rows, planos }
+  }, [ws])
+
+  const salvar = async (r: Map, patch: Partial<Map>) => {
+    const payload = { workspace_id: ws, provedor: 'pluggy', categoria_origem: r.categoria_origem, plano_conta_id: patch.plano_conta_id !== undefined ? patch.plano_conta_id : r.plano_conta_id, tipo_override: patch.tipo_override !== undefined ? patch.tipo_override : r.tipo_override }
+    const { error } = await supabase.from('categoria_mapeamentos').upsert(payload, { onConflict: 'workspace_id,provedor,categoria_origem' })
+    if (error) alert(error.message); else q.refetch()
+  }
+  const aplicar = async () => {
+    setMsg(null)
+    const { data, error } = await supabase.rpc('aplicar_mapeamento', { ws })
+    if (error) alert(error.message); else { setMsg(`${data ?? 0} lançamento(s) categorizados.`); q.refetch() }
+  }
+
+  if (q.loading) return <Loading />
+  const folhas = (q.data?.planos ?? []).filter(p => p.parent_id)
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-between items-start gap-4 flex-wrap">
+        <p className="text-sm text-muted max-w-2xl">Cada categoria enviada pelo agregador (Pluggy) é traduzida para uma conta do seu plano. Lançamentos importados sem mapeamento ficam marcados como "sem categoria" até você classificá-los aqui ou em Lançamentos. Marque como <b>transferência</b> o que não é receita nem despesa (pagamento de fatura, movimentação entre contas próprias).</p>
+        {podeEditar && <button className="btn btn-primary" onClick={aplicar}><Wand2 size={16} /> Aplicar aos lançamentos sem categoria</button>}
+      </div>
+      {msg && <div className="rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">{msg}</div>}
+      <div className="card overflow-x-auto">
+        <table className="tbl">
+          <thead><tr><th>Categoria do agregador</th><th className="text-right">Lançamentos</th><th className="text-right">Sem categoria</th><th>Conta do plano</th><th>Tratar como</th></tr></thead>
+          <tbody>
+            {(q.data?.rows ?? []).map(r => (
+              <tr key={r.categoria_origem} className={r.sem_categoria ? 'bg-amber-50/50' : ''}>
+                <td className="font-bold">{r.categoria_origem}</td>
+                <td className="text-right num">{r.qtd}</td>
+                <td className={`text-right num ${r.sem_categoria ? 'text-amber-700 font-bold' : 'text-muted'}`}>{r.sem_categoria}</td>
+                <td>
+                  <select className="input py-1 text-xs max-w-[280px]" disabled={!podeEditar} value={r.plano_conta_id ?? ''} onChange={e => salvar(r, { plano_conta_id: e.target.value || null })}>
+                    <option value="">— não mapear —</option>
+                    {folhas.map(p => <option key={p.id} value={p.id}>{p.codigo} {p.nome}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <select className="input py-1 text-xs" disabled={!podeEditar} value={r.tipo_override ?? ''} onChange={e => salvar(r, { tipo_override: (e.target.value || null) as Map['tipo_override'] })}>
+                    <option value="">Como veio do banco</option><option value="transferencia">Transferência</option><option value="despesa">Despesa</option><option value="receita">Receita</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+            {!q.data?.rows.length && <tr><td colSpan={5} className="text-muted">Nenhuma categoria importada ainda — conecte uma instituição em Integrações.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

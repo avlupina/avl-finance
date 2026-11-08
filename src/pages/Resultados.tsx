@@ -33,12 +33,18 @@ export default function Resultados() {
     const byPlano: Record<string, number[]> = {}
     const semCat: Record<string, number[]> = { receita: Array(12).fill(0), despesa: Array(12).fill(0) }
     const tot = { receitas: Array(12).fill(0), despesas: Array(12).fill(0) }
+    const planoDe = Object.fromEntries(planos.map(p => [p.id, p]))
     for (const l of lanc) {
       if (l.tipo === 'transferencia') continue
       const mi = Number(l.competencia.slice(5, 7)) - 1
       const v = Number(l.valor)
-      if (l.tipo === 'receita') tot.receitas[mi] += v; else tot.despesas[mi] += v
-      if (l.plano_conta_id) { (byPlano[l.plano_conta_id] ??= Array(12).fill(0))[mi] += v } else semCat[l.tipo][mi] += v
+      const p = l.plano_conta_id ? planoDe[l.plano_conta_id] : undefined
+      if (!p) { if (l.tipo === 'receita') tot.receitas[mi] += v; else tot.despesas[mi] += v; semCat[l.tipo][mi] += v; continue }
+      // sinal relativo à natureza da conta do plano: estorno (receita) numa conta de despesa abate a despesa
+      const contaReceita = p.tipo === 'receita'
+      const sinal = (l.tipo === 'receita') === contaReceita ? 1 : -1
+      if (contaReceita) tot.receitas[mi] += sinal * v; else tot.despesas[mi] += sinal * v
+      ;(byPlano[p.id] ??= Array(12).fill(0))[mi] += sinal * v
     }
     const parentOf = Object.fromEntries(planos.map(p => [p.id, p.parent_id]))
     const byGrupo: Record<string, number[]> = {}

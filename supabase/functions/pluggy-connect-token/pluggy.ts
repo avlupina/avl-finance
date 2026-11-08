@@ -110,9 +110,10 @@ export function resolveBanco<T extends { id: string; nome: string; codigo_compe:
     const b = bancos.find((x) => x.codigo_compe && Number(x.codigo_compe) === Number(compe));
     if (b) return b;
   }
-  const texto = `${acc.institution?.name ?? ""} ${acc.marketingName ?? ""} ${acc.name ?? ""}`.toLowerCase();
-  return bancos.find((x) => texto.includes(x.nome.toLowerCase().split(" ")[0]) && x.nome.split(" ")[0].length > 3)
-    ?? bancos.find((x) => texto.includes(x.nome.toLowerCase()));
+  const texto = ` ${acc.institution?.name ?? ""} ${acc.marketingName ?? ""} ${acc.name ?? ""} `.toLowerCase();
+  const palavra = (n: string) => new RegExp(`(^|[^a-z])${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`);
+  return bancos.find((x) => palavra(x.nome).test(texto))
+    ?? bancos.find((x) => x.nome.split(" ")[0].length > 4 && palavra(x.nome.split(" ")[0]).test(texto));
 }
 
 /** Sincroniza um item Pluggy (contas, transações e investimentos) para um workspace. */
@@ -169,9 +170,11 @@ export async function syncItem(opts: {
 
     // 2) contas
     const accounts = await pluggyGet(apiKey, `/accounts?itemId=${itemId}`);
-    const contaIdPorExternal: Record<string, string> = {};
+    // Um item = uma instituição. Resolve o banco uma vez (preferindo o código COMPE da conta corrente) e aplica a todas as contas.
+    const bancoItem = bancoPorConector
+      ?? (accounts.results ?? []).map((a: any) => resolveBanco(bancos, a)).find((b: unknown) => b);
     for (const acc of accounts.results ?? []) {
-      const banco = bancoPorConector ?? resolveBanco(bancos, acc);
+      const banco = bancoItem;
       const row = {
         workspace_id: workspaceId,
         banco_id: banco?.id ?? null,
@@ -265,6 +268,10 @@ export async function syncItem(opts: {
       if (error) throw error;
       resumo.investimentos++;
     }
+
+    // Categorização automática (categoria do agregador -> plano de contas)
+    const { data: mapeados } = await admin.rpc("aplicar_mapeamento", { ws: workspaceId });
+    resumo.categorizados = Number(mapeados ?? 0);
 
     await admin.from("integracoes").update({
       status: item.status === "UPDATED" || item.status === "OUTDATED" ? "conectado" : item.status === "LOGIN_ERROR" ? "erro" : "conectado",

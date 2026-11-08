@@ -9,14 +9,24 @@ import type { Integracao } from '../lib/types'
 
 declare global { interface Window { PluggyConnect?: new (opts: Record<string, unknown>) => { init: () => void } } }
 
-const PLUGGY_SCRIPT = 'https://cdn.pluggy.ai/pluggy-connect/v2.9.1/pluggy-connect.js'
-function loadPluggy(): Promise<void> {
-  return new Promise((res, rej) => {
-    if (window.PluggyConnect) return res()
-    const s = document.createElement('script'); s.src = PLUGGY_SCRIPT; s.async = true
-    s.onload = () => res(); s.onerror = () => rej(new Error('Não foi possível carregar o widget da Pluggy.'))
+// O CDN da Pluggy publica o widget em /latest (URLs versionadas podem retornar 404)
+const PLUGGY_SCRIPTS = [
+  'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js',
+  'https://cdn.pluggy.ai/pluggy-connect/v2.8.2/pluggy-connect.js',
+]
+function loadScript(src: string) {
+  return new Promise<void>((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.async = true
+    s.onload = () => res(); s.onerror = () => { s.remove(); rej(new Error(src)) }
     document.head.appendChild(s)
   })
+}
+async function loadPluggy(): Promise<void> {
+  if (window.PluggyConnect) return
+  for (const src of PLUGGY_SCRIPTS) {
+    try { await loadScript(src); if (window.PluggyConnect) return } catch { /* tenta o próximo */ }
+  }
+  throw new Error('Não foi possível carregar o widget da Pluggy (verifique bloqueadores de script/adblock).')
 }
 
 const STATUS: Record<string, { label: string; tone: 'green' | 'red' | 'amber' | 'blue' | 'gray'; icon: typeof Info }> = {
@@ -62,7 +72,7 @@ export default function Integracoes() {
           } catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
           q.refetch(); setBusy(null)
         },
-        onError: (e: { message?: string }) => { setErr(e?.message ?? 'Erro no widget de conexão.'); setBusy(null) },
+        onError: (e: { message?: string; data?: { item?: { error?: { message?: string } } } }) => { setErr(e?.data?.item?.error?.message ?? e?.message ?? 'Erro no widget de conexão.'); setBusy(null) },
         onClose: () => setBusy(null),
       })
       widget.init()

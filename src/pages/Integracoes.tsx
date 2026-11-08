@@ -67,7 +67,8 @@ export default function Integracoes() {
         onSuccess: async (data: { item: { id: string; connector?: { name: string } } }) => {
           setMsg(`Consentimento concluído com ${data.item.connector?.name ?? 'a instituição'}. Importando dados...`)
           try {
-            const r = await callFunction<{ resumo: Record<string, number> }>('pluggy-sync', { workspace_id: ws, item_id: data.item.id, integracao_id: integracaoId })
+            const from = new Date(); from.setMonth(from.getMonth() - 24)
+            const r = await callFunction<{ resumo: Record<string, number> }>('pluggy-sync', { workspace_id: ws, item_id: data.item.id, integracao_id: integracaoId, from: from.toISOString().slice(0, 10) })
             setMsg(`Importação concluída: ${r.resumo.contas} conta(s), ${r.resumo.lancamentos} lançamento(s), ${r.resumo.investimentos} investimento(s).`)
           } catch (e) { setErr(e instanceof Error ? e.message : String(e)) }
           q.refetch(); setBusy(null)
@@ -83,15 +84,17 @@ export default function Integracoes() {
     if (!i.external_item_id) return
     setBusy(i.id); setErr(null); setMsg(null)
     try {
-      const r = await callFunction<{ resumo: Record<string, number> }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id })
+      const from = new Date(); from.setMonth(from.getMonth() - 24)
+      const r = await callFunction<{ resumo: Record<string, number> }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10) })
+      await supabase.from('contas').update({ ativa: true }).eq('integracao_id', i.id)
       setMsg(`Sincronizado: ${r.resumo.contas} conta(s), ${r.resumo.lancamentos} lançamento(s), ${r.resumo.investimentos} investimento(s).`)
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)) } finally { setBusy(null); q.refetch() }
   }
 
   const remover = async (i: Integracao) => {
-    if (!confirm(`Remover a conexão com ${i.connector_nome ?? 'a instituição'}? As contas importadas permanecem, mas deixam de atualizar.`)) return
-    await supabase.from('contas').update({ integracao_id: null }).eq('integracao_id', i.id)
-    await supabase.from('integracoes').delete().eq('id', i.id)
+    if (!confirm(`Desconectar ${i.connector_nome ?? 'a instituição'}? As contas e lançamentos importados são mantidos (contas ficam inativas) e a conexão para de atualizar. Para reativar, basta reconectar — nada é duplicado.`)) return
+    await supabase.from('contas').update({ ativa: false }).eq('integracao_id', i.id)
+    await supabase.from('integracoes').update({ status: 'desconectado' }).eq('id', i.id)
     q.refetch()
   }
 
@@ -123,9 +126,9 @@ export default function Integracoes() {
                     {i.erro && <div className="text-xs text-neg bg-red-50 rounded-md px-2 py-1">{i.erro}</div>}
                     <div className="text-xs text-muted">Última sincronização: <b>{fmtDateTime(i.ultima_sincronizacao)}</b></div>
                     {podeEditar && <div className="flex gap-2 border-t border-line pt-3">
-                      <button className="btn flex-1 justify-center" onClick={() => sincronizar(i)} disabled={busy === i.id}><RefreshCw size={14} className={busy === i.id ? 'animate-spin' : ''} /> Sincronizar</button>
+                      <button className="btn flex-1 justify-center" onClick={() => sincronizar(i)} disabled={busy === i.id} title="Importa/atualiza os últimos 24 meses"><RefreshCw size={14} className={busy === i.id ? 'animate-spin' : ''} /> Sincronizar</button>
                       <button className="btn" title="Reautorizar consentimento" onClick={() => conectar(i.external_item_id ?? undefined, i.id)}><ShieldCheck size={14} /></button>
-                      <button className="btn btn-danger" title="Remover conexão" onClick={() => remover(i)}><Trash2 size={14} /></button>
+                      <button className="btn btn-danger" title="Desconectar" onClick={() => remover(i)}><Trash2 size={14} /></button>
                     </div>}
                   </div>
                 )

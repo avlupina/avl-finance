@@ -58,7 +58,7 @@ export default function Contas() {
     const integ = q.data?.integ.find(i => i.id === c.integracao_id)
     if (!integ?.external_item_id) return
     setSyncing(c.id)
-    try { await callFunction('pluggy-sync', { workspace_id: ws, item_id: integ.external_item_id, integracao_id: integ.id }); q.refetch() }
+    try { const from = new Date(); from.setMonth(from.getMonth() - 24); await callFunction('pluggy-sync', { workspace_id: ws, item_id: integ.external_item_id, integracao_id: integ.id, from: from.toISOString().slice(0, 10) }); q.refetch() }
     catch (e) { alert(e instanceof Error ? e.message : String(e)) } finally { setSyncing(null) }
   }
 

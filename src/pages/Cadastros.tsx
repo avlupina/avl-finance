@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Plus, Pencil, Trash2, ChevronRight, Wand2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronRight, Wand2, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
@@ -267,25 +267,35 @@ function Fornecedores() {
   }
   const excluir = async (f: Fornecedor) => { if (!confirm(`Excluir "${f.nome}"?`)) return; const { error } = await supabase.from('fornecedores').delete().eq('id', f.id); if (error) alert(error.message); else q.refetch() }
   const aplicar = async () => { const { data, error } = await supabase.rpc('aplicar_fornecedores', { ws }); if (error) alert(error.message); else { setMsg(`${data ?? 0} lançamento(s) vinculados/categorizados.`); q.refetch() } }
+  const importar = async () => {
+    if (!confirm('Gerar fornecedores a partir do extrato dos últimos 24 meses? Cada descrição recorrente (2+ ocorrências) vira um fornecedor com a categoria predominante. Fornecedores já existentes são mantidos.')) return
+    const { data, error } = await supabase.rpc('gerar_fornecedores', { ws, meses: 24, min_ocorrencias: 2 })
+    if (error) alert(error.message); else { setMsg(`${data ?? 0} fornecedor(es) criados a partir do extrato e regras aplicadas.`); q.refetch() }
+  }
+  const [busca, setBusca] = useState('')
+  const [soSemCat, setSoSemCat] = useState(false)
 
   if (q.loading) return <Loading />
   const folhas = (q.data?.planos ?? []).filter(p => p.parent_id)
+  const lista = (q.data?.forn ?? []).filter(f => (!busca || f.nome.toLowerCase().includes(busca.toLowerCase()) || (f.padrao_descricao ?? '').toLowerCase().includes(busca.toLowerCase())) && (!soSemCat || !f.plano_conta_id))
+  const setPlano = async (f: Fornecedor, plano: string) => { await supabase.from('fornecedores').update({ plano_conta_id: plano || null }).eq('id', f.id); q.refetch() }
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-start gap-4 flex-wrap">
         <p className="text-sm text-muted max-w-2xl">Fornecedores, estabelecimentos e favorecidos recorrentes, cada um vinculado a uma conta do plano. O <b>padrão de descrição</b> (ex.: "NETFLIX", "PIX JOAO") faz a categorização automática dos lançamentos importados que contenham esse texto — inclusive PIX e boletos que o agregador não classifica.</p>
-        {podeEditar && <div className="flex gap-2"><button className="btn" onClick={aplicar}><Wand2 size={16} /> Aplicar regras</button><button className="btn btn-primary" onClick={() => setModal({ form: empty() })}><Plus size={16} /> Novo fornecedor</button></div>}
+        {podeEditar && <div className="flex gap-2 flex-wrap"><button className="btn" onClick={importar}><Download size={16} /> Importar do extrato (24 meses)</button><button className="btn" onClick={aplicar}><Wand2 size={16} /> Aplicar regras</button><button className="btn btn-primary" onClick={() => setModal({ form: empty() })}><Plus size={16} /> Novo fornecedor</button></div>}
       </div>
       {msg && <div className="rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">{msg}</div>}
+      <div className="flex gap-3 items-center flex-wrap"><input className="input max-w-xs" placeholder="Buscar fornecedor..." value={busca} onChange={e => setBusca(e.target.value)} /><label className="text-sm flex items-center gap-2"><input type="checkbox" checked={soSemCat} onChange={e => setSoSemCat(e.target.checked)} /> Só sem categoria</label><span className="text-xs text-muted">{lista.length} de {q.data?.forn.length ?? 0}</span></div>
       <div className="card overflow-x-auto">
         <table className="tbl">
           <thead><tr><th>Fornecedor</th><th>CPF/CNPJ</th><th>Conta do plano</th><th>Padrão na descrição</th><th>Tratar como</th><th className="text-right">Lançamentos</th><th>Status</th>{podeEditar && <th></th>}</tr></thead>
           <tbody>
-            {(q.data?.forn ?? []).map(f => (
+            {lista.map(f => (
               <tr key={f.id} className={!f.ativo ? 'opacity-50' : ''}>
                 <td><div className="font-bold">{f.nome}</div>{f.observacao && <div className="text-xs text-muted">{f.observacao}</div>}</td>
                 <td className="num text-muted">{f.documento ?? '—'}</td>
-                <td>{f.plano_contas ? `${f.plano_contas.codigo} ${f.plano_contas.nome}` : <span className="text-muted">—</span>}</td>
+                <td><select className={`input py-1 text-xs max-w-[240px] ${!f.plano_conta_id ? 'border-amber-300 bg-amber-50' : ''}`} disabled={!podeEditar} value={f.plano_conta_id ?? ''} onChange={e => setPlano(f, e.target.value)}><option value="">— categorizar —</option>{folhas.map(p => <option key={p.id} value={p.id}>{p.codigo} {p.nome}</option>)}</select></td>
                 <td>{f.padrao_descricao ? <code className="text-xs bg-surface px-1.5 py-0.5 rounded">{f.padrao_descricao}</code> : <span className="text-muted">—</span>}</td>
                 <td className="text-muted text-xs">{f.tipo_padrao ?? 'como veio'}</td>
                 <td className="text-right num">{q.data?.uso[f.id] ?? 0}</td>
@@ -296,7 +306,7 @@ function Fornecedores() {
                 </td>}
               </tr>
             ))}
-            {!q.data?.forn.length && <tr><td colSpan={8} className="text-muted">Nenhum fornecedor cadastrado.</td></tr>}
+            {!lista.length && <tr><td colSpan={8} className="text-muted">Nenhum fornecedor encontrado.</td></tr>}
           </tbody>
         </table>
       </div>

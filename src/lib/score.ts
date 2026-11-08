@@ -16,6 +16,7 @@ export interface Pilar { key: string; label: string; score: number; cor: string;
 export interface Alerta { nivel: 'alto' | 'medio' | 'info'; texto: string; acao: string; to: string }
 
 const clamp = (v: number, a = 0, b = 100) => Math.max(a, Math.min(b, v))
+const fmtBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
 const faixa = (s: number) => s < 20 ? { rotulo: 'Na contramão!', cor: '#c0392b' } : s < 40 ? { rotulo: 'Desvio de rota!', cor: '#e67e22' } : s < 60 ? { rotulo: 'No caminho', cor: '#f1c40f' } : s < 80 ? { rotulo: 'Em boa rota', cor: '#27ae60' } : { rotulo: 'Rota exemplar!', cor: '#2a78d6' }
 
 export function calcularScore(i: ScoreInput) {
@@ -43,7 +44,7 @@ export function calcularScore(i: ScoreInput) {
 
   const pilares: Pilar[] = [
     { key: 'org', label: 'Organização financeira', score: Math.round(org), cor: '#c0392b', detalhes: [`Taxa de poupança ${poupanca.toFixed(1)}% (meta ≥ 20%)`, `${i.semCategoriaPct.toFixed(0)}% dos lançamentos sem categoria`, i.aderenciaPlano == null ? 'Sem plano mensal definido' : `${i.aderenciaPlano.toFixed(0)}% das categorias dentro do planejado`] },
-    { key: 'pat', label: 'Meu patrimônio', score: Math.round(pat), cor: '#e67e22', detalhes: [`Endividamento ${endividamento.toFixed(1)}% dos ativos (ideal ≤ 30%)`, `Reserva de ${i.reservaMeses.toFixed(1)} meses (meta 6)`, `Dívidas consomem ${dividas.toFixed(1)}% das despesas`] },
+    { key: 'pat', label: 'Meu patrimônio', score: Math.round(pat), cor: '#e67e22', detalhes: [`Endividamento ${Math.min(999, endividamento).toFixed(1)}% dos ativos (ideal ≤ 30%)`, `Reserva de ${i.reservaMeses.toFixed(1)} meses (meta 6)`, `Dívidas consomem ${dividas.toFixed(1)}% das despesas`] },
     { key: 'lib', label: 'Liberdade financeira', score: Math.round(lib), cor: '#2a78d6', detalhes: [`${i.progressoIF.toFixed(1)}% do patrimônio para independência`, `Capacidade de poupança ${poupanca.toFixed(1)}%`] },
     { key: 'ges', label: 'Gestão de ativos', score: Math.round(ges), cor: '#f1c40f', detalhes: [`${geradores.toFixed(0)}% dos ativos geram renda`, `${i.classesInvest} classe(s) de investimento`, `Investimentos = ${pct(i.investimentos, i.ativosTotais).toFixed(0)}% dos ativos`] },
   ]
@@ -53,7 +54,8 @@ export function calcularScore(i: ScoreInput) {
   if (i.receitaMedia > 0 && i.despesaMedia > i.receitaMedia) alertas.push({ nivel: 'alto', texto: `Você está gastando ${(pct(i.despesaMedia - i.receitaMedia, i.receitaMedia)).toFixed(2)}% a mais do que ganha. Revise o orçamento e as metas de gasto.`, acao: 'Ajustar plano', to: '/plano' })
   else if (poupanca < 10 && i.receitaMedia > 0) alertas.push({ nivel: 'medio', texto: `Sua taxa de poupança está em ${poupanca.toFixed(1)}%. A referência mínima é 10% e a ideal 20%.`, acao: 'Ajustar plano', to: '/plano' })
   if (dividas > 30) alertas.push({ nivel: 'alto', texto: `Dívidas e financiamentos estão comprometendo ${dividas.toFixed(2)}% das suas despesas.`, acao: 'Ver patrimônio', to: '/patrimonio' })
-  if (endividamento > 50) alertas.push({ nivel: 'alto', texto: `${endividamento.toFixed(1)}% do seu patrimônio está comprometido com passivos.`, acao: 'Ver patrimônio', to: '/patrimonio' })
+  if (i.ativosTotais > 0 && i.passivosTotais > i.ativosTotais) alertas.push({ nivel: 'alto', texto: `Seus passivos (${fmtBRL(i.passivosTotais)}) superam seus ativos (${fmtBRL(i.ativosTotais)}). Cadastre seus bens em Patrimônio para refletir a posição real.`, acao: 'Ver patrimônio', to: '/patrimonio' })
+  else if (endividamento > 50) alertas.push({ nivel: 'alto', texto: `${endividamento.toFixed(1)}% do seu patrimônio está comprometido com passivos.`, acao: 'Ver patrimônio', to: '/patrimonio' })
   if (i.reservaMeses < 3) alertas.push({ nivel: 'medio', texto: `Reserva de emergência cobre ${i.reservaMeses.toFixed(1)} mês(es) de despesas; o ideal são 6.`, acao: 'Ver futuro', to: '/futuro' })
   if (fixas > 60) alertas.push({ nivel: 'medio', texto: `Despesas fixas consomem ${fixas.toFixed(0)}% da renda — pouca margem para imprevistos.`, acao: 'Ver análise', to: '/analise' })
   if (i.semCategoriaPct > 5) alertas.push({ nivel: 'info', texto: `${i.semCategoriaPct.toFixed(0)}% dos lançamentos ainda sem categoria; os indicadores ficam imprecisos.`, acao: 'Classificar', to: '/lancamentos' })

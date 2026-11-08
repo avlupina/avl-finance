@@ -79,8 +79,8 @@ export default function Status() {
       {/* 2. Receitas, gastos e resultado do período */}
       {periodo.error ? <ErrorBox msg={periodo.error} /> : (
         <div className="grid grid-cols-3 gap-3 mb-3">
-          <Kpi label="Receitas" value={periodo.loading ? '…' : brl(calc.rec)} tone="pos" sub={`${fmtDate(ini)} a ${fmtDate(fim)}`} />
-          <Kpi label="Gastos" value={periodo.loading ? '…' : brl(calc.desp)} tone="neg" sub={`${calc.n} lançamentos${calc.semCat ? ` · ${calc.semCat} sem categoria` : ''}`} />
+          <Kpi label="Entradas" value={periodo.loading ? '…' : brl(calc.rec)} tone="pos" sub={`${fmtDate(ini)} a ${fmtDate(fim)}`} />
+          <Kpi label="Saídas" value={periodo.loading ? '…' : brl(calc.desp)} tone="neg" sub={`${calc.n} lançamentos${calc.semCat ? ` · ${calc.semCat} sem categoria` : ''}`} />
           <Kpi label="Resultado" value={periodo.loading ? '…' : brl(calc.rec - calc.desp)} tone={calc.rec - calc.desp >= 0 ? 'brand' : 'neg'} sub={calc.rec ? `taxa de poupança ${pct((calc.rec - calc.desp) / calc.rec * 100)}` : undefined} />
         </div>
       )}
@@ -107,7 +107,7 @@ export default function Status() {
 
       {/* 5. Gráficos */}
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <div className="card p-4"><div className="font-black mb-1">Gastos por grupo no período</div>{calc.top.length ? <BarrasHorizontais data={calc.top} color={SERIES[1]} /> : <div className="text-sm text-muted py-6">Sem despesas no período.</div>}</div>
+        <div className="card p-4"><div className="font-black mb-1">Saídas por grupo no período</div>{calc.top.length ? <BarrasHorizontais data={calc.top} color={SERIES[1]} /> : <div className="text-sm text-muted py-6">Sem despesas no período.</div>}</div>
         <div className="card p-4"><div className="font-black mb-1">Últimos 6 meses</div>{chart.length ? <ReceitaDespesaChart data={chart} /> : <div className="text-sm text-muted py-6">Sem histórico ainda.</div>}</div>
       </div>
 

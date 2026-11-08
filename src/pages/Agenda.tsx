@@ -10,7 +10,8 @@ import type { Conta, PlanoConta } from '../lib/types'
 
 type Horizonte = '30' | '60' | '90'
 interface AgendaEvento { id: string; data: string; titulo: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; plano_conta_id: string | null; recorrencia: 'unica' | 'mensal' | 'anual'; concluido: boolean; observacao: string | null }
-interface Item { key: string; data: string; titulo: string; detalhe: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; origem: 'fatura' | 'manual'; ev?: AgendaEvento; concluido?: boolean }
+interface Ajuste { id: string; chave: string; valor: number | null; data: string | null; titulo: string | null; observacao: string | null; oculto: boolean }
+interface Item { key: string; data: string; titulo: string; detalhe: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; origem: 'fatura' | 'manual'; ev?: AgendaEvento; ajuste?: Ajuste; conta?: Conta; concluido?: boolean }
 
 const addDias = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -24,32 +25,52 @@ export default function Agenda() {
   const [h, setH] = useState<Horizonte>('30')
   const [modal, setModal] = useState<null | { id?: string; form: ReturnType<typeof emptyForm> }>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [ajModal, setAjModal] = useState<null | { item: Item; valor: string; data: string; titulo: string; observacao: string }>(null)
   const hoje = new Date(todayISO() + 'T12:00:00')
   const fim = addDias(hoje, Number(h))
 
   const q = useQuery(async () => {
-    const [c, e, p] = await Promise.all([
+    const [c, e, p, aj, tx] = await Promise.all([
       supabase.from('contas').select('*').eq('workspace_id', ws).eq('ativa', true),
       supabase.from('agenda_eventos').select('*').eq('workspace_id', ws).gte('data', iso(addDias(hoje, -400))).lte('data', iso(fim)).order('data'),
       supabase.from('plano_contas').select('*').eq('workspace_id', ws).eq('ativo', true).order('codigo'),
+      supabase.from('agenda_ajustes').select('*').eq('workspace_id', ws),
+      supabase.from('lancamentos').select('conta_id, data, valor, tipo').eq('workspace_id', ws).gte('data', iso(addDias(hoje, -70))).lte('data', iso(addDias(fim, 40))).neq('tipo', 'transferencia').limit(20000),
     ])
     if (e.error) throw e.error
-    return { contas: c.data as Conta[], eventos: e.data as AgendaEvento[], planos: (p.data ?? []) as PlanoConta[] }
+    return { contas: c.data as Conta[], eventos: e.data as AgendaEvento[], planos: (p.data ?? []) as PlanoConta[], ajustes: (aj.data ?? []) as Ajuste[], tx: (tx.data ?? []) as { conta_id: string; data: string; valor: number; tipo: string }[] }
   }, [ws, h])
 
   const itens = useMemo<Item[]>(() => {
     const d = q.data; if (!d) return []
     const out: Item[] = []
     const dentro = (s: string) => s >= iso(hoje) && s <= iso(fim)
-    // Faturas de cartão
+    // Faturas de cartão — valor do ciclo (compras entre o fechamento anterior e o fechamento do ciclo), não o saldo total devedor.
+    const ajusteDe = (chave: string) => d.ajustes.find(a => a.chave === chave)
     for (const c of d.contas.filter(x => x.tipo === 'cartao_credito')) {
-      if (!c.vencimento_fatura) { out.push({ key: `f-${c.id}`, data: iso(hoje), titulo: `Fatura ${c.nome}`, detalhe: 'informe o dia de vencimento em Contas para posicionar na agenda', valor: Math.abs(Number(c.saldo_atual)), tipo: 'despesa', origem: 'fatura' }); continue }
-      for (let k = 0; k <= 3; k++) {
-        const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth() + k + 1, 0).getDate()
-        const dt = new Date(hoje.getFullYear(), hoje.getMonth() + k, Math.min(c.vencimento_fatura, ultimoDia), 12); const s = iso(dt)
-        if (!dentro(s)) continue
-        const atual = k === 0 || (k === 1 && c.fechamento_fatura != null && hoje.getDate() > c.fechamento_fatura)
-        out.push({ key: `f-${c.id}-${s}`, data: s, titulo: `Fatura ${c.nome}`, detalhe: atual ? `valor atual da fatura${c.limite ? ` · limite ${brl(c.limite)}` : ''}` : 'estimativa — fatura ainda não fechada', valor: Math.abs(Number(c.saldo_atual)), tipo: 'despesa', origem: 'fatura' })
+      const venc = c.vencimento_fatura
+      if (!venc) {
+        const chave = `fatura:${c.id}:sem-data`; const aj = ajusteDe(chave); if (aj?.oculto) continue
+        out.push({ key: chave, data: aj?.data ?? iso(hoje), titulo: aj?.titulo ?? `Fatura ${c.nome}`, detalhe: aj?.observacao ?? 'informe o dia de vencimento em Contas para posicionar e calcular por ciclo', valor: aj?.valor ?? Math.abs(Number(c.saldo_atual)), tipo: 'despesa', origem: 'fatura', ajuste: aj, conta: c }); continue
+      }
+      const fech = c.fechamento_fatura ?? Math.max(1, venc - 7)                 // sem fechamento informado: assume 7 dias antes do vencimento
+      const txConta = d.tx.filter(t => t.conta_id === c.id)
+      for (let k = -1; k <= 3; k++) {
+        const ultimoDia = (y: number, m: number) => new Date(y, m + 1, 0).getDate()
+        const dtVenc = new Date(hoje.getFullYear(), hoje.getMonth() + k, Math.min(venc, ultimoDia(hoje.getFullYear(), hoje.getMonth() + k)), 12)
+        // fechamento do ciclo: mesmo mês do vencimento se fech < venc, senão mês anterior
+        const mesFech = fech < venc ? 0 : -1
+        const dtFech = new Date(dtVenc.getFullYear(), dtVenc.getMonth() + mesFech, Math.min(fech, ultimoDia(dtVenc.getFullYear(), dtVenc.getMonth() + mesFech)), 12)
+        const dtFechAnt = new Date(dtFech.getFullYear(), dtFech.getMonth() - 1, Math.min(fech, ultimoDia(dtFech.getFullYear(), dtFech.getMonth() - 1)), 12)
+        const sVenc = iso(dtVenc); if (!dentro(sVenc)) continue
+        const chave = `fatura:${c.id}:${sVenc}`; const aj = ajusteDe(chave); if (aj?.oculto) continue
+        const ciclo = txConta.filter(t => t.data > iso(dtFechAnt) && t.data <= iso(dtFech))
+        const calc = ciclo.reduce((a, t) => a + (t.tipo === 'despesa' ? Number(t.valor) : -Number(t.valor)), 0)
+        const fechado = iso(dtFech) <= iso(hoje)
+        const temDados = ciclo.length > 0
+        const valor = aj?.valor ?? (temDados ? Math.max(0, calc) : (k <= 0 ? Math.abs(Number(c.saldo_atual)) : 0))
+        const detalhe = aj?.observacao ?? (aj?.valor != null ? 'valor ajustado manualmente' : temDados ? `${ciclo.length} lançamentos de ${fmtDate(iso(addDias(dtFechAnt, 1)))} a ${fmtDate(iso(dtFech))}${fechado ? '' : ' · ciclo em aberto (parcial)'}` : k <= 0 ? 'sem lançamentos no ciclo — usando saldo informado pelo banco' : 'sem lançamentos previstos no ciclo')
+        out.push({ key: chave, data: aj?.data ?? sVenc, titulo: aj?.titulo ?? `Fatura ${c.nome}`, detalhe, valor, tipo: 'despesa', origem: 'fatura', ajuste: aj, conta: c })
       }
     }
     // Lançamentos manuais (com recorrência)
@@ -81,6 +102,14 @@ export default function Agenda() {
     setModal(null); q.refetch()
   }
   const excluir = async (ev: AgendaEvento) => { if (!confirm(`Excluir "${ev.titulo}"?`)) return; await supabase.from('agenda_eventos').delete().eq('id', ev.id); q.refetch() }
+  const salvarAjuste = async (e: FormEvent) => {
+    e.preventDefault(); if (!ajModal) return
+    const v = Number(ajModal.valor.replace(/\./g, '').replace(',', '.'))
+    const { error } = await supabase.from('agenda_ajustes').upsert({ workspace_id: ws, chave: ajModal.item.key, valor: isNaN(v) ? null : v, data: ajModal.data || null, titulo: ajModal.titulo || null, observacao: ajModal.observacao || null, oculto: false }, { onConflict: 'workspace_id,chave' })
+    if (error) alert(error.message); else { setAjModal(null); q.refetch() }
+  }
+  const limparAjuste = async (item: Item) => { await supabase.from('agenda_ajustes').delete().eq('workspace_id', ws).eq('chave', item.key); setAjModal(null); q.refetch() }
+  const ocultar = async (item: Item) => { if (!confirm('Ocultar este item da agenda?')) return; await supabase.from('agenda_ajustes').upsert({ workspace_id: ws, chave: item.key, oculto: true }, { onConflict: 'workspace_id,chave' }); q.refetch() }
   const concluir = async (ev: AgendaEvento) => { await supabase.from('agenda_eventos').update({ concluido: !ev.concluido }).eq('id', ev.id); q.refetch() }
 
   return (
@@ -89,7 +118,7 @@ export default function Agenda() {
         <Tabs tabs={[{ key: '30', label: '30 dias' }, { key: '60', label: '60 dias' }, { key: '90', label: '90 dias' }]} value={h} onChange={setH} />
         {podeEditar && <button className="btn btn-primary" onClick={() => setModal({ form: emptyForm() })}><Plus size={16} /> Novo compromisso</button>}
       </>}>
-        <p className="text-sm text-muted">De {fmtDate(iso(hoje))} a {fmtDate(iso(fim))}: faturas dos cartões de crédito (pelo dia de vencimento) e compromissos lançados por você.</p>
+        <p className="text-sm text-muted">De {fmtDate(iso(hoje))} a {fmtDate(iso(fim))}: faturas dos cartões calculadas por ciclo de fechamento (não o saldo total devedor) e compromissos lançados por você. Todos os itens podem ser ajustados.</p>
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -112,10 +141,14 @@ export default function Agenda() {
                     <td className="num whitespace-nowrap w-28">{fmtDate(e.data)}<div className="text-[11px] text-muted">{new Date(e.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}</div></td>
                     <td className="w-10"><div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-ink/70">{e.origem === 'fatura' ? <CreditCard size={16} /> : e.ev?.recorrencia !== 'unica' ? <Repeat size={16} /> : <CalendarDays size={16} />}</div></td>
                     <td><div className="font-bold">{e.titulo}</div><div className="text-xs text-muted">{e.detalhe}</div></td>
-                    <td><Badge tone={e.origem === 'fatura' ? 'red' : 'blue'}>{e.origem === 'fatura' ? 'Fatura de cartão' : 'Compromisso'}</Badge></td>
+                    <td><Badge tone={e.origem === 'fatura' ? 'red' : 'blue'}>{e.origem === 'fatura' ? (e.ajuste?.valor != null ? 'Fatura (ajustada)' : 'Fatura de cartão') : 'Compromisso'}</Badge></td>
                     <td className="text-right"><MoneyCell v={e.valor} tipo={e.tipo} /></td>
                     <td className="text-right w-32 whitespace-nowrap">
-                      {e.origem === 'fatura' ? <Link to="/contas" className="text-xs font-bold text-brand">contas</Link> : podeEditar && e.ev && <>
+                      {e.origem === 'fatura' ? (podeEditar ? <>
+                        <button className="btn btn-ghost p-1.5" title="Ajustar valor/data" onClick={() => setAjModal({ item: e, valor: String(e.valor), data: e.data, titulo: e.titulo, observacao: e.ajuste?.observacao ?? '' })}><Pencil size={15} /></button>
+                        <button className="btn btn-ghost p-1.5 text-neg" title="Ocultar" onClick={() => ocultar(e)}><Trash2 size={15} /></button>
+                        <Link to="/contas" className="text-xs font-bold text-brand ml-1" title="Dia de vencimento/fechamento">contas</Link>
+                      </> : <Link to="/contas" className="text-xs font-bold text-brand">contas</Link>) : podeEditar && e.ev && <>
                         {e.ev.recorrencia === 'unica' && <button className="btn btn-ghost p-1.5 text-pos" title={e.ev.concluido ? 'Reabrir' : 'Concluir'} onClick={() => concluir(e.ev!)}><CheckCircle2 size={15} /></button>}
                         <button className="btn btn-ghost p-1.5" onClick={() => setModal({ id: e.ev!.id, form: { data: e.ev!.data, titulo: e.ev!.titulo, valor: String(e.ev!.valor), tipo: e.ev!.tipo, plano_conta_id: e.ev!.plano_conta_id ?? '', recorrencia: e.ev!.recorrencia, observacao: e.ev!.observacao ?? '' } })}><Pencil size={15} /></button>
                         <button className="btn btn-ghost p-1.5 text-neg" onClick={() => excluir(e.ev!)}><Trash2 size={15} /></button>
@@ -127,6 +160,17 @@ export default function Agenda() {
           ))}
         </div>
       )}
+
+      <Modal open={!!ajModal} onClose={() => setAjModal(null)} title="Ajustar fatura">
+        {ajModal && <form onSubmit={salvarAjuste} className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 text-xs text-muted">O valor calculado considera os lançamentos do ciclo de fechamento. Se a fatura real for diferente (parcelamento, encargos, pagamento parcial), informe aqui — o ajuste vale só para este vencimento.</div>
+          <Field label="Título" className="col-span-2"><input className="input" value={ajModal.titulo} onChange={e => setAjModal({ ...ajModal, titulo: e.target.value })} /></Field>
+          <Field label="Valor a pagar (R$)"><input className="input num" required value={ajModal.valor} onChange={e => setAjModal({ ...ajModal, valor: e.target.value })} /></Field>
+          <Field label="Data"><input type="date" className="input" value={ajModal.data} onChange={e => setAjModal({ ...ajModal, data: e.target.value })} /></Field>
+          <Field label="Observação" className="col-span-2"><input className="input" value={ajModal.observacao} onChange={e => setAjModal({ ...ajModal, observacao: e.target.value })} /></Field>
+          <div className="col-span-2 flex justify-between gap-2">{ajModal.item.ajuste ? <button type="button" className="btn btn-danger" onClick={() => limparAjuste(ajModal.item)}>Voltar ao calculado</button> : <span />}<div className="flex gap-2"><button type="button" className="btn" onClick={() => setAjModal(null)}>Cancelar</button><button className="btn btn-primary">Salvar</button></div></div>
+        </form>}
+      </Modal>
 
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal?.id ? 'Editar compromisso' : 'Novo compromisso'}>
         {modal && <form onSubmit={salvar} className="grid grid-cols-2 gap-3">

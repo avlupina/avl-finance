@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plug, RefreshCw, Trash2, ShieldCheck, Landmark, AlertTriangle, CheckCircle2, Clock, Info } from 'lucide-react'
-import { supabase, callFunction, FUNCTIONS_URL } from '../lib/supabase'
+import { supabase, callFunction } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, Empty, ErrorBox, Loading, PageHeader } from '../components/ui'
@@ -46,12 +46,9 @@ export default function Integracoes() {
   const [msg, setMsg] = useState<string | null>(null)
 
   const q = useQuery(async () => {
-    const [i, l] = await Promise.all([
-      supabase.from('integracoes').select('*').eq('workspace_id', ws).order('created_at', { ascending: false }),
-      supabase.from('sync_logs').select('*').eq('workspace_id', ws).order('iniciado_em', { ascending: false }).limit(15),
-    ])
+    const i = await supabase.from('integracoes').select('*').eq('workspace_id', ws).order('created_at', { ascending: false })
     if (i.error) throw i.error
-    return { integ: i.data as Integracao[], logs: (l.data ?? []) as { id: string; integracao_id: string; iniciado_em: string; finalizado_em: string | null; status: string; resumo: Record<string, unknown> }[] }
+    return { integ: i.data as Integracao[] }
   }, [ws])
 
   const conectar = async (itemId?: string, integracaoId?: string) => {
@@ -102,7 +99,7 @@ export default function Integracoes() {
     <div>
       <PageHeader title="Integrações" actions={podeEditar && <button className="btn btn-primary" onClick={() => conectar()} disabled={busy === 'novo'}><Plug size={16} /> Conectar instituição</button>} />
 
-      <div className="grid lg:grid-cols-[1fr_340px] gap-5">
+      <div className="grid gap-5">
         <div className="flex flex-col gap-4">
           <ErrorBox msg={err} />
           {msg && <div className="rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">{msg}</div>}
@@ -136,42 +133,7 @@ export default function Integracoes() {
             </div>
           )}
 
-          {!!q.data?.logs.length && (
-            <div className="card">
-              <div className="px-4 py-3 border-b border-line font-black">Histórico de sincronizações</div>
-              <table className="tbl">
-                <thead><tr><th>Início</th><th>Instituição</th><th>Status</th><th>Resumo</th></tr></thead>
-                <tbody>{q.data.logs.map(l => {
-                  const i = q.data!.integ.find(x => x.id === l.integracao_id)
-                  const r = l.resumo ?? {}
-                  return <tr key={l.id}><td className="num whitespace-nowrap">{fmtDateTime(l.iniciado_em)}</td><td>{i?.connector_nome ?? '—'}</td><td><Badge tone={l.status === 'ok' ? 'green' : l.status === 'erro' ? 'red' : 'blue'}>{l.status}</Badge></td><td className="text-xs text-muted">{r.erro ? String(r.erro) : `${r.contas ?? 0} contas · ${r.lancamentos ?? 0} lançamentos · ${r.investimentos ?? 0} investimentos`}</td></tr>
-                })}</tbody>
-              </table>
-            </div>
-          )}
         </div>
-
-        <aside className="flex flex-col gap-4">
-          <div className="card p-4">
-            <div className="font-black mb-2 flex items-center gap-2"><ShieldCheck size={18} className="text-brand" /> Como funciona</div>
-            <ol className="text-sm text-ink/80 flex flex-col gap-2 list-decimal pl-5">
-              <li><b>Consentimento:</b> ao clicar em Conectar, abre-se a interface segura do agregador (Pluggy). Você faz login na instituição e autoriza o compartilhamento — suas credenciais nunca passam pelo AVL Finance.</li>
-              <li><b>Coleta:</b> o agregador consulta a API oficial de Open Finance (ex.: Banco do Brasil PF) e devolve saldo, extrato e investimentos em JSON.</li>
-              <li><b>Integração:</b> as Edge Functions gravam contas, lançamentos e investimentos no seu workspace, sem duplicar registros.</li>
-              <li><b>Atualização:</b> o webhook da Pluggy dispara nova sincronização a cada atualização do item; você também pode sincronizar manualmente.</li>
-            </ol>
-          </div>
-          <div className="card p-4 text-sm">
-            <div className="font-black mb-2">Configuração do ambiente</div>
-            <p className="text-muted mb-2">No painel do Supabase (Edge Functions → Secrets), defina:</p>
-            <ul className="font-mono text-xs bg-surface rounded-lg p-3 flex flex-col gap-1">
-              <li>PLUGGY_CLIENT_ID</li><li>PLUGGY_CLIENT_SECRET</li><li className="text-muted">PLUGGY_WEBHOOK_SECRET (opcional)</li>
-            </ul>
-            <p className="text-muted mt-3">URL do webhook para cadastrar na Pluggy:</p>
-            <code className="block text-xs bg-surface rounded-lg p-2 mt-1 break-all">{FUNCTIONS_URL}/pluggy-webhook</code>
-            <p className="text-muted mt-3 text-xs">A Belvo pode ser adicionada como segundo provedor: a tabela <code>integracoes.provedor</code> e as funções já estão preparadas para isso.</p>
-          </div>
-        </aside>
       </div>
     </div>
   )

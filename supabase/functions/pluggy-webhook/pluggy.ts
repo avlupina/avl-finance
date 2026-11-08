@@ -199,39 +199,41 @@ export async function syncItem(opts: {
       contaIdPorExternal[acc.id] = c.id;
       resumo.contas++;
 
-      // 3) transações
+      // 3) transações — GET /v2/transactions (paginação por cursor; o "next" já vem como query string pronta)
       const from = opts.fromDate ??
         new Date(Date.now() - 1000 * 60 * 60 * 24 * 365).toISOString().slice(0, 10);
-      let page = 1;
-      while (true) {
-        const tx = await pluggyGet(
-          apiKey,
-          `/transactions?accountId=${acc.id}&from=${from}&pageSize=500&page=${page}`,
-        );
-        const rows = (tx.results ?? []).map((t: any) => ({
-          workspace_id: workspaceId,
-          conta_id: c.id,
-          data: (t.date ?? "").slice(0, 10),
-          descricao: t.description ?? t.descriptionRaw ?? "Lançamento",
-          valor: Math.abs(t.amount ?? 0),
-          tipo: (t.amount ?? 0) >= 0 ? (acc.type === "CREDIT" ? "despesa" : "receita") : (acc.type === "CREDIT" ? "receita" : "despesa"),
-          status: t.status === "PENDING" ? "pendente" : "efetivado",
-          origem: "pluggy",
-          external_id: t.id,
-          categoria_origem: t.category ?? null,
-          observacao: t.descriptionRaw ?? null,
-          created_by: opts.userId ?? null,
-        }));
-        // Cartão: na Pluggy, gasto no cartão vem com amount positivo (débito) — tratado acima.
+      let query: string | null = `?accountId=${acc.id}&dateFrom=${from}`;
+      let guard = 0;
+      while (query && guard++ < 200) {
+        const tx = await pluggyGet(apiKey, `/v2/transactions${query}`);
+        const rows = (tx.results ?? []).map((t: any) => {
+          const credito = t.type ? t.type === "CREDIT" : (t.amount ?? 0) >= 0;
+          // Cartão: CREDIT = pagamento/estorno (receita), DEBIT = compra (despesa). Conta: CREDIT = entrada.
+          const tipo = acc.type === "CREDIT" ? (credito ? "receita" : "despesa") : (credito ? "receita" : "despesa");
+          return {
+            workspace_id: workspaceId,
+            conta_id: c.id,
+            data: (t.date ?? "").slice(0, 10),
+            descricao: t.description ?? t.descriptionRaw ?? "Lançamento",
+            valor: Math.abs(t.amount ?? 0),
+            tipo,
+            status: t.status === "PENDING" ? "pendente" : "efetivado",
+            origem: "pluggy",
+            external_id: t.id,
+            categoria_origem: t.category ?? null,
+            observacao: t.descriptionRaw ?? null,
+            created_by: opts.userId ?? null,
+          };
+        });
         if (rows.length) {
           const { error: eTx } = await admin
             .from("lancamentos")
-            .upsert(rows, { onConflict: "conta_id,external_id", ignoreDuplicates: false });
+            .upsert(rows, { onConflict: "conta_id,external_id" });
           if (eTx) throw eTx;
           resumo.lancamentos += rows.length;
         }
-        if (page >= (tx.totalPages ?? 1)) break;
-        page++;
+        const next: string | null = tx.next ?? null;
+        query = next && next !== query ? next : null;
       }
     }
 

@@ -82,15 +82,16 @@ Para reimplantar após alterações: `supabase functions deploy pluggy-sync --pr
 
 | Menu | O que faz |
 |---|---|
-| Status Atual | Posição consolidada (contas, cartões, investimentos, PL), receitas × gastos por período (data inicial/final), últimos lançamentos, projeções e objetivos |
+| Status Atual | Score financeiro 0–100 (Organização, Patrimônio, Liberdade financeira, Gestão de ativos) com alertas; posição consolidada (contas, cartões, investimentos, PL), receitas × gastos por período (data inicial/final), últimos lançamentos, projeções e objetivos |
 | Projeções | Gastos e receitas previstos por mês (recorrentes, cópia do mês anterior, previsto × realizado) |
-| Plano | Orçamento mensal por categoria: planejado × realizado, preenchimento pela média de 3 meses |
+| Plano | Renda × gastos médios por natureza, metas de gasto por categoria (economia projetada), reserva ideal, orçamento completo |
 | Lançamentos | Filtros por período/tipo/conta/categoria, categorização inline, CRUD, exportação CSV |
 | Resultados | DRE pessoal (plano × meses), evolução mensal, orçado × realizado editável |
 | Análise | Taxa de poupança, fixas × variáveis, top categorias, recorrências, gastos por dia da semana |
-| Investimentos | Carteira, alocação por classe/instituição, rentabilidade, liquidez |
-| Futuro | Metas e reserva de emergência, projeção patrimonial com premissas ajustáveis |
-| Patrimônio | Bens e dívidas, patrimônio líquido consolidado (contas + investimentos + bens − passivos) |
+| Investimentos | Carteira, meta de investimento mensal, alocação por objetivo (reserva, projetos curto/médio/longo, independência), classe/instituição |
+| Futuro | Independência financeira por idade (idade de aposentadoria, renda desejada, outras rendas, investimento mensal, taxa real) e projetos por prioridade (Essencial/Desejo/Sonho) |
+| Proteção | Cobertura de vida necessária (padrão de vida, educação, sucessão) × apólices contratadas |
+| Patrimônio | Bens e Dívidas (investimentos, empréstimos, bens móveis, imóveis, milhas; saldo devedor vinculado; ativo gerador de renda), Resumo Patrimonial, Evolução mensal |
 | Contas | Contas e cartões (conectados ou manuais), saldos, sincronização |
 | Integrações | Conexões Open Finance, histórico de sincronizações, configuração |
 | Cadastros | Plano de contas, bancos, fornecedores (regras por descrição → categoria) e mapeamento de categorias do agregador |

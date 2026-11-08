@@ -6,6 +6,7 @@ import Lancamentos from './pages/Lancamentos'
 import Status from './pages/Status'
 import Projecoes from './pages/Projecoes'
 import Plano from './pages/Plano'
+import Protecao from './pages/Protecao'
 import Assistente from './components/Assistente'
 import Resultados from './pages/Resultados'
 import Analise from './pages/Analise'
@@ -32,6 +33,7 @@ function Guard() {
         <Route path="/lancamentos" element={<Lancamentos />} />
         <Route path="/projecoes" element={<Projecoes />} />
         <Route path="/plano" element={<Plano />} />
+        <Route path="/protecao" element={<Protecao />} />
         <Route path="/resultados" element={<Resultados />} />
         <Route path="/analise" element={<Analise />} />
         <Route path="/investimentos" element={<Investimentos />} />

@@ -7,11 +7,17 @@ import { useQuery } from '../hooks/useQuery'
 import { Empty, ErrorBox, Field, Kpi, Loading, MoneyCell, PageHeader } from '../components/ui'
 import { BarrasHorizontais, ReceitaDespesaChart, SERIES } from '../components/charts'
 import { brl, firstDayOfMonth, fmtDate, fmtDateTime, mesLabel, pct, todayISO } from '../lib/format'
+import { useResumo } from '../hooks/useResumo'
+import { Gauge, Anel } from '../components/Gauge'
 import type { Conta, Lancamento, PlanoConta, Projecao } from '../lib/types'
 
+const saudacao = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite' }
+
 export default function Status() {
-  const { workspace } = useAuth()
+  const { workspace, profile } = useAuth()
   const ws = workspace!.id
+  const resumo = useResumo()
+  const [pilar, setPilar] = useState(0)
   const [ini, setIni] = useState(firstDayOfMonth())
   const [fim, setFim] = useState(todayISO())
 
@@ -63,7 +69,36 @@ export default function Status() {
 
   return (
     <div>
-      <PageHeader crumb="Início" title="Status Atual" actions={<div className="text-xs text-muted">{ultimaSinc ? `Dados bancários atualizados em ${fmtDateTime(ultimaSinc as string)}` : 'Sem contas conectadas'}</div>} />
+      <PageHeader crumb="Início" title={`${saudacao()}, ${(profile?.nome ?? '').split(' ')[0]}!`} actions={<div className="text-xs text-muted">{ultimaSinc ? `Dados bancários atualizados em ${fmtDateTime(ultimaSinc as string)}` : 'Sem contas conectadas'}</div>} />
+
+      {/* Score financeiro */}
+      {resumo.r && (
+        <div className="card p-5 mb-5">
+          <div className="grid lg:grid-cols-[300px_1fr] gap-6 items-center">
+            <div className="flex flex-col items-center"><Gauge value={resumo.r.score.total} label={resumo.r.score.rotulo} /><div className="text-xs text-muted -mt-2">Score financeiro · média dos últimos {resumo.r.media.meses || 0} meses</div></div>
+            <div>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {resumo.r.score.pilares.map((p, i) => <button key={p.key} onClick={() => setPilar(i)} className={`btn text-sm ${pilar === i ? 'border-brand bg-brand-soft' : ''}`}><span className="w-1.5 h-4 rounded-sm" style={{ background: p.cor }} /> {p.label}</button>)}
+              </div>
+              <div className="flex items-center gap-5 flex-wrap">
+                <Anel value={resumo.r.score.pilares[pilar].score} cor={resumo.r.score.pilares[pilar].cor} />
+                <ul className="text-sm text-ink/80 flex flex-col gap-1">{resumo.r.score.pilares[pilar].detalhes.map(d => <li key={d}>• {d}</li>)}</ul>
+              </div>
+            </div>
+          </div>
+          {!!resumo.r.score.alertas.length && (
+            <ul className="mt-5 border-t border-line pt-4 flex flex-col gap-2">
+              {resumo.r.score.alertas.slice(0, 5).map((a, i) => (
+                <li key={i} className="flex items-center gap-3 text-sm">
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${a.nivel === 'alto' ? 'bg-red-50 text-neg' : a.nivel === 'medio' ? 'bg-amber-50 text-amber-700' : 'bg-brand-soft text-brand'}`}><AlertTriangle size={15} /></span>
+                  <span className="flex-1">{a.texto}</span>
+                  <Link to={a.to} className="font-bold text-brand whitespace-nowrap">{a.acao}</Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Posição */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

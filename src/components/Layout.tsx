@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   ArrowLeftRight, BarChart3, PieChart, TrendingUp, Telescope, Landmark, Wallet, Plug, FolderCog, Users,
-  Search, LogOut, ChevronDown, Menu, X, Gauge, CalendarClock, ClipboardList,
+  Search, LogOut, ChevronDown, Menu, X, Gauge, CalendarClock, ClipboardList, ShieldCheck,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth, type Modulo } from '../hooks/useAuth'
@@ -15,6 +15,7 @@ export const NAV: { to: string; label: string; icon: typeof Wallet; modulo: Modu
   { to: '/investimentos', label: 'Investimentos', icon: TrendingUp, modulo: 'investimentos', group: 'Gestão', hint: 'Carteira e rentabilidade' },
   { to: '/futuro', label: 'Futuro', icon: Telescope, modulo: 'futuro', group: 'Gestão', hint: 'Objetivos, independência financeira e projeções' },
   { to: '/plano', label: 'Plano', icon: ClipboardList, modulo: 'plano', group: 'Gestão', hint: 'Orçamento mensal planejado x realizado' },
+  { to: '/protecao', label: 'Proteção', icon: ShieldCheck, modulo: 'protecao', group: 'Gestão', hint: 'Seguros, apólices e cobertura necessária' },
   { to: '/patrimonio', label: 'Patrimônio', icon: Landmark, modulo: 'patrimonio', group: 'Posição', hint: 'Ativos, passivos e evolução patrimonial' },
   { to: '/contas', label: 'Contas', icon: Wallet, modulo: 'contas', group: 'Posição', hint: 'Contas bancárias e cartões' },
   { to: '/lancamentos', label: 'Lançamentos', icon: ArrowLeftRight, modulo: 'lancamentos', group: 'Movimentação', hint: 'Receitas, despesas e transferências' },

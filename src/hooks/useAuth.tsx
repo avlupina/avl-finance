@@ -3,19 +3,19 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 export type Papel = 'owner' | 'admin' | 'editor' | 'leitor'
-export type Modulo = 'status' | 'lancamentos' | 'projecoes' | 'resultados' | 'analise' | 'investimentos' | 'futuro' | 'plano' | 'patrimonio' | 'contas' | 'integracoes' | 'cadastros' | 'usuarios'
+export type Modulo = 'status' | 'lancamentos' | 'projecoes' | 'resultados' | 'analise' | 'investimentos' | 'futuro' | 'plano' | 'protecao' | 'patrimonio' | 'contas' | 'integracoes' | 'cadastros' | 'usuarios'
 export const MODULOS: { key: Modulo; label: string }[] = [
   { key: 'status', label: 'Status Atual' }, { key: 'resultados', label: 'Resultados' },
   { key: 'analise', label: 'Análise' }, { key: 'investimentos', label: 'Investimentos' },
-  { key: 'futuro', label: 'Futuro' }, { key: 'plano', label: 'Plano' }, { key: 'patrimonio', label: 'Patrimônio' },
+  { key: 'futuro', label: 'Futuro' }, { key: 'plano', label: 'Plano' }, { key: 'protecao', label: 'Proteção' }, { key: 'patrimonio', label: 'Patrimônio' },
   { key: 'lancamentos', label: 'Lançamentos' }, { key: 'projecoes', label: 'Projeções' },
   { key: 'contas', label: 'Contas' }, { key: 'integracoes', label: 'Integrações' },
   { key: 'cadastros', label: 'Cadastros' }, { key: 'usuarios', label: 'Usuários' },
 ]
 
-export interface Workspace { id: string; nome: string; owner_id: string; moeda: string }
+export interface Workspace { id: string; nome: string; owner_id: string; moeda: string; config: Record<string, unknown> }
 export interface Membership { id: string; workspace_id: string; papel: Papel; permissoes: Record<string, 'ver' | 'editar' | 'nenhum'>; workspaces: Workspace }
-export interface Profile { id: string; nome: string | null; email: string | null }
+export interface Profile { id: string; nome: string | null; email: string | null; data_nascimento: string | null }
 
 interface AuthCtx {
   session: Session | null
@@ -32,6 +32,7 @@ interface AuthCtx {
   canEditModule: (m: Modulo) => boolean
   setWorkspaceId: (id: string) => void
   refresh: () => Promise<void>
+  updateConfig: (patch: Record<string, unknown>) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -89,6 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     workspace: membership?.workspaces ?? null, membership, papel, loading, canEdit, isAdmin, canSee, canEditModule,
     setWorkspaceId: (id) => { localStorage.setItem('avl.ws', id); setWorkspaceIdState(id) },
     refresh: async () => { const { data } = await supabase.auth.getSession(); await load(data.session) },
+    updateConfig: async (patch) => {
+      if (!membership) return
+      const novo = { ...(membership.workspaces.config ?? {}), ...patch }
+      await supabase.from('workspaces').update({ config: novo }).eq('id', membership.workspace_id)
+      setMemberships(ms => ms.map(m => m.workspace_id === membership.workspace_id ? { ...m, workspaces: { ...m.workspaces, config: novo } } : m))
+    },
     signOut: async () => { await supabase.auth.signOut(); localStorage.removeItem('avl.ws') },
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

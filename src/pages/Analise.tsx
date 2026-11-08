@@ -12,9 +12,14 @@ type Tab = 'uso' | 'categorias' | 'habitos'
 export default function Analise() {
   const { workspace } = useAuth()
   const ws = workspace!.id
-  const [meses, setMeses] = useState(6)
+  const [periodo, setPeriodo] = useState('6m')
   const [tab, setTab] = useState<Tab>('uso')
-  const ini = useMemo(() => { const d = new Date(); d.setMonth(d.getMonth() - (meses - 1)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01` }, [meses])
+  const ini = useMemo(() => {
+    const d = new Date()
+    if (periodo.endsWith('d')) { d.setDate(d.getDate() - (Number(periodo.slice(0, -1)) - 1)); return d.toISOString().slice(0, 10) }
+    d.setMonth(d.getMonth() - (Number(periodo.slice(0, -1)) - 1)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+  }, [periodo])
+  const meses = useMemo(() => periodo.endsWith('d') ? Math.max(1, Math.round(Number(periodo.slice(0, -1)) / 30)) : Number(periodo.slice(0, -1)), [periodo])
 
   const q = useQuery(async () => {
     const [l, p] = await Promise.all([
@@ -60,7 +65,7 @@ export default function Analise() {
 
   return (
     <div>
-      <PageHeader title="Análise" actions={<select className="input w-40" value={meses} onChange={e => setMeses(Number(e.target.value))}><option value={3}>Últimos 3 meses</option><option value={6}>Últimos 6 meses</option><option value={12}>Últimos 12 meses</option><option value={24}>Últimos 24 meses</option></select>}>
+      <PageHeader title="Análise" actions={<select className="input w-44" value={periodo} onChange={e => setPeriodo(e.target.value)}><option value="7d">Últimos 7 dias</option><option value="15d">Últimos 15 dias</option><option value="30d">Últimos 30 dias</option><option value="2m">Últimos 2 meses</option><option value="3m">Últimos 3 meses</option><option value="6m">Últimos 6 meses</option><option value="12m">Últimos 12 meses</option><option value="24m">Últimos 24 meses</option></select>}>
         <Tabs tabs={[{ key: 'uso', label: 'Uso do Dinheiro' }, { key: 'categorias', label: 'Categorias' }, { key: 'habitos', label: 'Hábitos e Recorrências' }]} value={tab} onChange={setTab} />
       </PageHeader>
 

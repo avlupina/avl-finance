@@ -3,6 +3,10 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import Layout, { NAV } from './components/Layout'
 import Login from './pages/Login'
 import Lancamentos from './pages/Lancamentos'
+import Status from './pages/Status'
+import Projecoes from './pages/Projecoes'
+import Plano from './pages/Plano'
+import Assistente from './components/Assistente'
 import Resultados from './pages/Resultados'
 import Analise from './pages/Analise'
 import Investimentos from './pages/Investimentos'
@@ -19,12 +23,15 @@ function Guard() {
   if (loading) return <div className="h-full flex items-center justify-center"><Loading /></div>
   if (!session) return <Login />
   if (!workspace) return <div className="h-full flex items-center justify-center p-6 text-center text-muted">Sua conta ainda não está vinculada a nenhuma carteira. Peça ao proprietário para convidá-lo em <b>Usuários</b>.</div>
-  const first = NAV.find(n => canSee(n.modulo))?.to ?? '/lancamentos'
+  const first = NAV.find(n => canSee(n.modulo))?.to ?? '/status'
   return (
     <Routes>
-      <Route element={<Layout />}>
+      <Route element={<><Layout /><Assistente /></>}>
         <Route index element={<Navigate to={first} replace />} />
+        <Route path="/status" element={<Status />} />
         <Route path="/lancamentos" element={<Lancamentos />} />
+        <Route path="/projecoes" element={<Projecoes />} />
+        <Route path="/plano" element={<Plano />} />
         <Route path="/resultados" element={<Resultados />} />
         <Route path="/analise" element={<Analise />} />
         <Route path="/investimentos" element={<Investimentos />} />

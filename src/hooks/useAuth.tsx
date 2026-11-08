@@ -3,11 +3,12 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 export type Papel = 'owner' | 'admin' | 'editor' | 'leitor'
-export type Modulo = 'lancamentos' | 'resultados' | 'analise' | 'investimentos' | 'futuro' | 'patrimonio' | 'contas' | 'integracoes' | 'cadastros' | 'usuarios'
+export type Modulo = 'status' | 'lancamentos' | 'projecoes' | 'resultados' | 'analise' | 'investimentos' | 'futuro' | 'plano' | 'patrimonio' | 'contas' | 'integracoes' | 'cadastros' | 'usuarios'
 export const MODULOS: { key: Modulo; label: string }[] = [
-  { key: 'lancamentos', label: 'Lançamentos' }, { key: 'resultados', label: 'Resultados' },
+  { key: 'status', label: 'Status Atual' }, { key: 'resultados', label: 'Resultados' },
   { key: 'analise', label: 'Análise' }, { key: 'investimentos', label: 'Investimentos' },
-  { key: 'futuro', label: 'Futuro' }, { key: 'patrimonio', label: 'Patrimônio' },
+  { key: 'futuro', label: 'Futuro' }, { key: 'plano', label: 'Plano' }, { key: 'patrimonio', label: 'Patrimônio' },
+  { key: 'lancamentos', label: 'Lançamentos' }, { key: 'projecoes', label: 'Projeções' },
   { key: 'contas', label: 'Contas' }, { key: 'integracoes', label: 'Integrações' },
   { key: 'cadastros', label: 'Cadastros' }, { key: 'usuarios', label: 'Usuários' },
 ]

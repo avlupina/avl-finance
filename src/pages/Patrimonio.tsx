@@ -1,12 +1,12 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Plus, Pencil, Trash2, Home, Car, Briefcase, Landmark, HandCoins, Package } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, Empty, ErrorBox, Field, Kpi, Loading, Modal, PageHeader } from '../components/ui'
-import { Rosca } from '../components/charts'
-import { brl, fmtDate, pct, todayISO } from '../lib/format'
-import type { Patrimonio as Pat } from '../lib/types'
+import { LinhaChart, Rosca } from '../components/charts'
+import { brl, fmtDate, mesLabel, pct, todayISO } from '../lib/format'
+import type { Patrimonio as Pat, PatrimonioSnapshot } from '../lib/types'
 
 const CATS: { k: string; l: string; tipo: 'ativo' | 'passivo'; icon: typeof Home }[] = [
   { k: 'imovel', l: 'Imóvel', tipo: 'ativo', icon: Home }, { k: 'veiculo', l: 'Veículo', tipo: 'ativo', icon: Car }, { k: 'participacao', l: 'Participação societária', tipo: 'ativo', icon: Briefcase },
@@ -22,19 +22,23 @@ export default function Patrimonio() {
   const [modal, setModal] = useState<null | { id?: string; form: ReturnType<typeof emptyForm> }>(null)
   const [err, setErr] = useState<string | null>(null)
 
+  useEffect(() => { supabase.rpc('registrar_snapshot_patrimonio', { ws }).then(() => {}) }, [ws])
   const q = useQuery(async () => {
-    const [p, v] = await Promise.all([
+    const [p, v, sn] = await Promise.all([
       supabase.from('patrimonio').select('*').eq('workspace_id', ws).order('tipo').order('valor', { ascending: false }),
       supabase.from('v_patrimonio_liquido').select('*').eq('workspace_id', ws).maybeSingle(),
+      supabase.from('patrimonio_snapshots').select('*').eq('workspace_id', ws).order('competencia').limit(36),
     ])
     if (p.error) throw p.error
-    return { itens: p.data as Pat[], pos: (v.data ?? { saldo_contas: 0, faturas_cartao: 0, investimentos: 0, outros_ativos: 0, passivos: 0 }) as Record<string, number> }
+    return { itens: p.data as Pat[], pos: (v.data ?? { saldo_contas: 0, faturas_cartao: 0, investimentos: 0, outros_ativos: 0, passivos: 0 }) as Record<string, number>, snaps: (sn.data ?? []) as PatrimonioSnapshot[] }
   }, [ws])
 
   const pos = q.data?.pos
   const ativos = Number(pos?.saldo_contas ?? 0) + Number(pos?.investimentos ?? 0) + Number(pos?.outros_ativos ?? 0)
   const passivos = Number(pos?.passivos ?? 0) + Math.abs(Number(pos?.faturas_cartao ?? 0))
   const pl = ativos - passivos
+  const evolucao = useMemo(() => (q.data?.snaps ?? []).map(s => ({ mes: mesLabel(s.competencia), patrimonioLiquido: Number(s.patrimonio_liquido), ativos: Number(s.saldo_contas) + Number(s.investimentos) + Number(s.outros_ativos), passivos: Number(s.passivos) + Math.abs(Number(s.faturas_cartao)) })), [q.data])
+  const variacao = evolucao.length >= 2 ? evolucao[evolucao.length - 1].patrimonioLiquido - evolucao[evolucao.length - 2].patrimonioLiquido : null
   const composicao = useMemo(() => [
     { nome: 'Contas bancárias', valor: Number(pos?.saldo_contas ?? 0) }, { nome: 'Investimentos', valor: Number(pos?.investimentos ?? 0) },
     ...CATS.filter(c => c.tipo === 'ativo').map(c => ({ nome: c.l, valor: (q.data?.itens ?? []).filter(i => i.categoria === c.k).reduce((a, i) => a + Number(i.valor), 0) })),
@@ -58,7 +62,13 @@ export default function Patrimonio() {
         <Kpi label="Patrimônio líquido" value={brl(pl)} tone={pl >= 0 ? 'brand' : 'neg'} />
         <Kpi label="Total de ativos" value={brl(ativos)} tone="pos" sub={`contas ${brl(pos?.saldo_contas ?? 0)} · invest. ${brl(pos?.investimentos ?? 0)}`} />
         <Kpi label="Total de passivos" value={brl(passivos)} tone="neg" sub={`inclui faturas de cartão ${brl(Math.abs(Number(pos?.faturas_cartao ?? 0)))}`} />
-        <Kpi label="Endividamento" value={pct(ativos ? (passivos / ativos) * 100 : 0)} sub="passivos / ativos" />
+        <Kpi label="Endividamento" value={pct(ativos ? (passivos / ativos) * 100 : 0)} sub={variacao != null ? <span className={variacao >= 0 ? 'text-pos' : 'text-neg'}>PL {variacao >= 0 ? '+' : '−'}{brl(Math.abs(variacao))} vs. mês anterior</span> : 'passivos / ativos'} />
+      </div>
+
+      <div className="card p-4 mb-4">
+        <div className="font-black mb-1">Evolução do patrimônio</div>
+        <div className="text-xs text-muted mb-2">Posição registrada mensalmente (contas + investimentos + bens − dívidas). O histórico se forma a partir de agora, a cada acesso ou sincronização.</div>
+        {evolucao.length >= 2 ? <LinhaChart data={evolucao} height={260} series={[{ key: 'patrimonioLiquido', name: 'Patrimônio líquido', color: '#104862' }, { key: 'ativos', name: 'Ativos', color: '#1baf7a' }, { key: 'passivos', name: 'Passivos', color: '#eb6834' }]} /> : <div className="text-sm text-muted py-4">Primeiro registro feito hoje ({brl(pl)}). O gráfico aparece a partir do segundo mês.</div>}
       </div>
 
       {q.loading ? <Loading /> : q.error ? <ErrorBox msg={q.error} /> : (

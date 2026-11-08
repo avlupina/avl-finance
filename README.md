@@ -66,6 +66,7 @@ Depois de publicar, em **Supabase → Authentication → URL Configuration** def
 | `pluggy-connect-token` | sim | Gera o token do widget (valida que o usuário pode editar o workspace) |
 | `pluggy-sync` | sim | Sincroniza um item: upsert de contas, lançamentos (dedupe por `external_id`) e investimentos |
 | `pluggy-webhook` | não | Recebe eventos `item/*` e `transactions/*` da Pluggy e dispara a sincronização |
+| `assistente` | sim | Assistente de IA (Anthropic Claude) com o resumo financeiro do workspace (`resumo_financeiro`). Secrets: `ANTHROPIC_API_KEY`, opcional `ANTHROPIC_MODEL` |
 
 Para reimplantar após alterações: `supabase functions deploy pluggy-sync --project-ref wllbunqisamgxfjlwlzi` (ou via MCP).
 
@@ -81,6 +82,9 @@ Para reimplantar após alterações: `supabase functions deploy pluggy-sync --pr
 
 | Menu | O que faz |
 |---|---|
+| Status Atual | Posição consolidada (contas, cartões, investimentos, PL), receitas × gastos por período (data inicial/final), últimos lançamentos, projeções e objetivos |
+| Projeções | Gastos e receitas previstos por mês (recorrentes, cópia do mês anterior, previsto × realizado) |
+| Plano | Orçamento mensal por categoria: planejado × realizado, preenchimento pela média de 3 meses |
 | Lançamentos | Filtros por período/tipo/conta/categoria, categorização inline, CRUD, exportação CSV |
 | Resultados | DRE pessoal (plano × meses), evolução mensal, orçado × realizado editável |
 | Análise | Taxa de poupança, fixas × variáveis, top categorias, recorrências, gastos por dia da semana |
@@ -89,5 +93,5 @@ Para reimplantar após alterações: `supabase functions deploy pluggy-sync --pr
 | Patrimônio | Bens e dívidas, patrimônio líquido consolidado (contas + investimentos + bens − passivos) |
 | Contas | Contas e cartões (conectados ou manuais), saldos, sincronização |
 | Integrações | Conexões Open Finance, histórico de sincronizações, configuração |
-| Cadastros | Plano de contas hierárquico e bancos |
+| Cadastros | Plano de contas, bancos, fornecedores (regras por descrição → categoria) e mapeamento de categorias do agregador |
 | Usuários | Convites, alçadas e permissões por módulo |

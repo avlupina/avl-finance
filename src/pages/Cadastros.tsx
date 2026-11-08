@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, ErrorBox, Field, Loading, Modal, PageHeader, Tabs } from '../components/ui'
-import type { Banco, PlanoConta } from '../lib/types'
+import type { Banco, Fornecedor, PlanoConta } from '../lib/types'
 
-type Tab = 'plano' | 'bancos' | 'mapeamento'
+type Tab = 'plano' | 'bancos' | 'fornecedores' | 'mapeamento'
 const TIPO_PLANO = { receita: 'Receita', despesa: 'Despesa', investimento: 'Investimento', transferencia: 'Transferência' }
 
 export default function Cadastros() {
@@ -14,9 +14,9 @@ export default function Cadastros() {
   return (
     <div>
       <PageHeader title="Cadastros">
-        <Tabs tabs={[{ key: 'plano', label: 'Plano de Contas' }, { key: 'bancos', label: 'Bancos' }, { key: 'mapeamento', label: 'Categorias do Agregador' }]} value={tab} onChange={setTab} />
+        <Tabs tabs={[{ key: 'plano', label: 'Plano de Contas' }, { key: 'bancos', label: 'Bancos' }, { key: 'fornecedores', label: 'Fornecedores' }, { key: 'mapeamento', label: 'Categorias do Agregador' }]} value={tab} onChange={setTab} />
       </PageHeader>
-      {tab === 'plano' ? <PlanoContas /> : tab === 'bancos' ? <Bancos /> : <Mapeamento />}
+      {tab === 'plano' ? <PlanoContas /> : tab === 'bancos' ? <Bancos /> : tab === 'fornecedores' ? <Fornecedores /> : <Mapeamento />}
     </div>
   )
 }
@@ -233,6 +233,86 @@ function Mapeamento() {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+/* ---------------- Fornecedores ---------------- */
+function Fornecedores() {
+  const { workspace, canEditModule } = useAuth()
+  const ws = workspace!.id
+  const podeEditar = canEditModule('cadastros')
+  const [msg, setMsg] = useState<string | null>(null)
+  const q = useQuery(async () => {
+    const [f, p, l] = await Promise.all([
+      supabase.from('fornecedores').select('*, plano_contas(codigo, nome)').eq('workspace_id', ws).order('nome'),
+      supabase.from('plano_contas').select('*').eq('workspace_id', ws).eq('ativo', true).order('codigo'),
+      supabase.from('lancamentos').select('fornecedor_id').eq('workspace_id', ws).not('fornecedor_id', 'is', null).limit(50000),
+    ])
+    if (f.error) throw f.error
+    const uso: Record<string, number> = {}; for (const r of (l.data ?? []) as { fornecedor_id: string }[]) uso[r.fornecedor_id] = (uso[r.fornecedor_id] ?? 0) + 1
+    return { forn: f.data as (Fornecedor & { plano_contas?: { codigo: string; nome: string } | null })[], planos: (p.data ?? []) as PlanoConta[], uso }
+  }, [ws])
+  const empty = () => ({ nome: '', documento: '', plano_conta_id: '', padrao_descricao: '', tipo_padrao: '' as '' | 'receita' | 'despesa' | 'transferencia', observacao: '', ativo: true })
+  const [modal, setModal] = useState<null | { id?: string; form: ReturnType<typeof empty> }>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const salvar = async (e: FormEvent) => {
+    e.preventDefault(); if (!modal) return; setErr(null)
+    const f = modal.form
+    const payload = { workspace_id: ws, nome: f.nome.trim(), documento: f.documento || null, plano_conta_id: f.plano_conta_id || null, padrao_descricao: f.padrao_descricao.trim() || null, tipo_padrao: f.tipo_padrao || null, observacao: f.observacao || null, ativo: f.ativo }
+    const r = modal.id ? await supabase.from('fornecedores').update(payload).eq('id', modal.id) : await supabase.from('fornecedores').insert(payload)
+    if (r.error) { setErr(r.error.message.includes('unique') ? 'Já existe um fornecedor com este nome.' : r.error.message); return }
+    setModal(null); q.refetch()
+  }
+  const excluir = async (f: Fornecedor) => { if (!confirm(`Excluir "${f.nome}"?`)) return; const { error } = await supabase.from('fornecedores').delete().eq('id', f.id); if (error) alert(error.message); else q.refetch() }
+  const aplicar = async () => { const { data, error } = await supabase.rpc('aplicar_fornecedores', { ws }); if (error) alert(error.message); else { setMsg(`${data ?? 0} lançamento(s) vinculados/categorizados.`); q.refetch() } }
+
+  if (q.loading) return <Loading />
+  const folhas = (q.data?.planos ?? []).filter(p => p.parent_id)
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-between items-start gap-4 flex-wrap">
+        <p className="text-sm text-muted max-w-2xl">Fornecedores, estabelecimentos e favorecidos recorrentes, cada um vinculado a uma conta do plano. O <b>padrão de descrição</b> (ex.: "NETFLIX", "PIX JOAO") faz a categorização automática dos lançamentos importados que contenham esse texto — inclusive PIX e boletos que o agregador não classifica.</p>
+        {podeEditar && <div className="flex gap-2"><button className="btn" onClick={aplicar}><Wand2 size={16} /> Aplicar regras</button><button className="btn btn-primary" onClick={() => setModal({ form: empty() })}><Plus size={16} /> Novo fornecedor</button></div>}
+      </div>
+      {msg && <div className="rounded-lg border border-green-200 bg-green-50 text-green-800 px-3 py-2 text-sm">{msg}</div>}
+      <div className="card overflow-x-auto">
+        <table className="tbl">
+          <thead><tr><th>Fornecedor</th><th>CPF/CNPJ</th><th>Conta do plano</th><th>Padrão na descrição</th><th>Tratar como</th><th className="text-right">Lançamentos</th><th>Status</th>{podeEditar && <th></th>}</tr></thead>
+          <tbody>
+            {(q.data?.forn ?? []).map(f => (
+              <tr key={f.id} className={!f.ativo ? 'opacity-50' : ''}>
+                <td><div className="font-bold">{f.nome}</div>{f.observacao && <div className="text-xs text-muted">{f.observacao}</div>}</td>
+                <td className="num text-muted">{f.documento ?? '—'}</td>
+                <td>{f.plano_contas ? `${f.plano_contas.codigo} ${f.plano_contas.nome}` : <span className="text-muted">—</span>}</td>
+                <td>{f.padrao_descricao ? <code className="text-xs bg-surface px-1.5 py-0.5 rounded">{f.padrao_descricao}</code> : <span className="text-muted">—</span>}</td>
+                <td className="text-muted text-xs">{f.tipo_padrao ?? 'como veio'}</td>
+                <td className="text-right num">{q.data?.uso[f.id] ?? 0}</td>
+                <td><Badge tone={f.ativo ? 'green' : 'gray'}>{f.ativo ? 'ativo' : 'inativo'}</Badge></td>
+                {podeEditar && <td className="text-right whitespace-nowrap">
+                  <button className="btn btn-ghost p-1.5" onClick={() => setModal({ id: f.id, form: { nome: f.nome, documento: f.documento ?? '', plano_conta_id: f.plano_conta_id ?? '', padrao_descricao: f.padrao_descricao ?? '', tipo_padrao: f.tipo_padrao ?? '', observacao: f.observacao ?? '', ativo: f.ativo } })}><Pencil size={15} /></button>
+                  <button className="btn btn-ghost p-1.5 text-neg" onClick={() => excluir(f)}><Trash2 size={15} /></button>
+                </td>}
+              </tr>
+            ))}
+            {!q.data?.forn.length && <tr><td colSpan={8} className="text-muted">Nenhum fornecedor cadastrado.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <Modal open={!!modal} onClose={() => setModal(null)} title={modal?.id ? 'Editar fornecedor' : 'Novo fornecedor'}>
+        {modal && <form onSubmit={salvar} className="grid grid-cols-2 gap-3">
+          <Field label="Nome" className="col-span-2"><input className="input" required value={modal.form.nome} onChange={e => setModal({ ...modal, form: { ...modal.form, nome: e.target.value } })} /></Field>
+          <Field label="CPF/CNPJ"><input className="input" value={modal.form.documento} onChange={e => setModal({ ...modal, form: { ...modal.form, documento: e.target.value } })} /></Field>
+          <Field label="Tratar lançamentos como"><select className="input" value={modal.form.tipo_padrao} onChange={e => setModal({ ...modal, form: { ...modal.form, tipo_padrao: e.target.value as typeof modal.form.tipo_padrao } })}><option value="">Como veio do banco</option><option value="despesa">Despesa</option><option value="receita">Receita</option><option value="transferencia">Transferência</option></select></Field>
+          <Field label="Conta do plano (categoria padrão)" className="col-span-2"><select className="input" value={modal.form.plano_conta_id} onChange={e => setModal({ ...modal, form: { ...modal.form, plano_conta_id: e.target.value } })}><option value="">—</option>{folhas.map(p => <option key={p.id} value={p.id}>{p.codigo} {p.nome}</option>)}</select></Field>
+          <Field label="Padrão na descrição do extrato" className="col-span-2"><input className="input" placeholder='ex.: "NETFLIX" ou "PIX ENVIADO MARIA"' value={modal.form.padrao_descricao} onChange={e => setModal({ ...modal, form: { ...modal.form, padrao_descricao: e.target.value } })} /><div className="text-[11px] text-muted mt-1">Sem diferenciar maiúsculas. Mínimo 3 caracteres. Aplicado aos lançamentos importados.</div></Field>
+          <Field label="Observação" className="col-span-2"><input className="input" value={modal.form.observacao} onChange={e => setModal({ ...modal, form: { ...modal.form, observacao: e.target.value } })} /></Field>
+          <label className="col-span-2 text-sm flex items-center gap-2"><input type="checkbox" checked={modal.form.ativo} onChange={e => setModal({ ...modal, form: { ...modal.form, ativo: e.target.checked } })} /> Ativo</label>
+          <div className="col-span-2"><ErrorBox msg={err} /></div>
+          <div className="col-span-2 flex justify-end gap-2"><button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button><button className="btn btn-primary">Salvar</button></div>
+        </form>}
+      </Modal>
     </div>
   )
 }

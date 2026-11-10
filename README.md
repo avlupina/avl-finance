@@ -66,6 +66,7 @@ Depois de publicar, em **Supabase → Authentication → URL Configuration** def
 | `pluggy-connect-token` | sim | Gera o token do widget (valida que o usuário pode editar o workspace) |
 | `pluggy-sync` | sim | Sincroniza um item: upsert de contas, lançamentos (dedupe por `external_id`) e investimentos |
 | `pluggy-webhook` | não | Recebe eventos `item/*` e `transactions/*` da Pluggy e dispara a sincronização |
+| `pluggy-sync-all` | não (chave interna `app_config.cron_key`) | Sincroniza todas as integrações conectadas; disparada por `pg_cron` (`avl_sync_diario`, 13:00 UTC = 10:00 Brasília) via `pg_net` |
 | `assistente` | sim | Assistente de IA (Anthropic Claude) com o resumo financeiro do workspace (`resumo_financeiro`). Secrets: `ANTHROPIC_API_KEY`, opcional `ANTHROPIC_MODEL` |
 
 Para reimplantar após alterações: `supabase functions deploy pluggy-sync --project-ref wllbunqisamgxfjlwlzi` (ou via MCP).

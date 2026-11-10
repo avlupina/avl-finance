@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, Empty, ErrorBox, Field, Kpi, Loading, Modal, MoneyCell, PageHeader, Tabs } from '../components/ui'
 import { brl, fmtDate, todayISO } from '../lib/format'
+import { MoneyInput } from '../components/MoneyInput'
 import type { Conta, PlanoConta } from '../lib/types'
 
 type Horizonte = '30' | '60' | '90'
@@ -96,7 +97,7 @@ export default function Agenda() {
   const salvar = async (e: FormEvent) => {
     e.preventDefault(); if (!modal) return; setErr(null)
     const f = modal.form
-    const payload = { workspace_id: ws, data: f.data, titulo: f.titulo.trim(), valor: Math.abs(Number(String(f.valor).replace(/\./g, '').replace(',', '.'))) || 0, tipo: f.tipo, plano_conta_id: f.plano_conta_id || null, recorrencia: f.recorrencia, observacao: f.observacao || null, created_by: user!.id }
+    const payload = { workspace_id: ws, data: f.data, titulo: f.titulo.trim(), valor: Math.abs(Number(f.valor)) || 0, tipo: f.tipo, plano_conta_id: f.plano_conta_id || null, recorrencia: f.recorrencia, observacao: f.observacao || null, created_by: user!.id }
     const r = modal.id ? await supabase.from('agenda_eventos').update(payload).eq('id', modal.id) : await supabase.from('agenda_eventos').insert(payload)
     if (r.error) { setErr(r.error.message); return }
     setModal(null); q.refetch()
@@ -104,7 +105,7 @@ export default function Agenda() {
   const excluir = async (ev: AgendaEvento) => { if (!confirm(`Excluir "${ev.titulo}"?`)) return; await supabase.from('agenda_eventos').delete().eq('id', ev.id); q.refetch() }
   const salvarAjuste = async (e: FormEvent) => {
     e.preventDefault(); if (!ajModal) return
-    const v = Number(ajModal.valor.replace(/\./g, '').replace(',', '.'))
+    const v = Number(ajModal.valor)
     const { error } = await supabase.from('agenda_ajustes').upsert({ workspace_id: ws, chave: ajModal.item.key, valor: isNaN(v) ? null : v, data: ajModal.data || null, titulo: ajModal.titulo || null, observacao: ajModal.observacao || null, oculto: false }, { onConflict: 'workspace_id,chave' })
     if (error) alert(error.message); else { setAjModal(null); q.refetch() }
   }
@@ -165,7 +166,7 @@ export default function Agenda() {
         {ajModal && <form onSubmit={salvarAjuste} className="grid grid-cols-2 gap-3">
           <div className="col-span-2 text-xs text-muted">O valor calculado considera os lançamentos do ciclo de fechamento. Se a fatura real for diferente (parcelamento, encargos, pagamento parcial), informe aqui — o ajuste vale só para este vencimento.</div>
           <Field label="Título" className="col-span-2"><input className="input" value={ajModal.titulo} onChange={e => setAjModal({ ...ajModal, titulo: e.target.value })} /></Field>
-          <Field label="Valor a pagar (R$)"><input className="input num" required value={ajModal.valor} onChange={e => setAjModal({ ...ajModal, valor: e.target.value })} /></Field>
+          <Field label="Valor a pagar"><MoneyInput required value={ajModal.valor} onChange={v => setAjModal({ ...ajModal, valor: v })} /></Field>
           <Field label="Data"><input type="date" className="input" value={ajModal.data} onChange={e => setAjModal({ ...ajModal, data: e.target.value })} /></Field>
           <Field label="Observação" className="col-span-2"><input className="input" value={ajModal.observacao} onChange={e => setAjModal({ ...ajModal, observacao: e.target.value })} /></Field>
           <div className="col-span-2 flex justify-between gap-2">{ajModal.item.ajuste ? <button type="button" className="btn btn-danger" onClick={() => limparAjuste(ajModal.item)}>Voltar ao calculado</button> : <span />}<div className="flex gap-2"><button type="button" className="btn" onClick={() => setAjModal(null)}>Cancelar</button><button className="btn btn-primary">Salvar</button></div></div>
@@ -177,7 +178,7 @@ export default function Agenda() {
           <Field label="Tipo" className="col-span-2"><div className="grid grid-cols-2 gap-2">{(['despesa', 'receita'] as const).map(t => <button type="button" key={t} className={`btn justify-center ${modal.form.tipo === t ? 'btn-primary' : ''}`} onClick={() => setModal({ ...modal, form: { ...modal.form, tipo: t } })}>{t === 'despesa' ? 'Pagamento' : 'Recebimento'}</button>)}</div></Field>
           <Field label="Título" className="col-span-2"><input className="input" required placeholder="ex.: IPVA Hilux, mensalidade escola, parcela consórcio" value={modal.form.titulo} onChange={e => setModal({ ...modal, form: { ...modal.form, titulo: e.target.value } })} /></Field>
           <Field label="Data"><input type="date" className="input" required value={modal.form.data} onChange={e => setModal({ ...modal, form: { ...modal.form, data: e.target.value } })} /></Field>
-          <Field label="Valor (R$)"><input className="input num" required inputMode="decimal" value={modal.form.valor} onChange={e => setModal({ ...modal, form: { ...modal.form, valor: e.target.value } })} /></Field>
+          <Field label="Valor"><MoneyInput required value={modal.form.valor} onChange={v => setModal({ ...modal, form: { ...modal.form, valor: v } })} /></Field>
           <Field label="Recorrência"><select className="input" value={modal.form.recorrencia} onChange={e => setModal({ ...modal, form: { ...modal.form, recorrencia: e.target.value as AgendaEvento['recorrencia'] } })}><option value="unica">Única</option><option value="mensal">Todo mês</option><option value="anual">Todo ano</option></select></Field>
           <Field label="Categoria"><select className="input" value={modal.form.plano_conta_id} onChange={e => setModal({ ...modal, form: { ...modal.form, plano_conta_id: e.target.value } })}><option value="">—</option>{(q.data?.planos ?? []).filter(p => p.parent_id && (p.tipo === modal.form.tipo || p.tipo === 'investimento')).map(p => <option key={p.id} value={p.id}>{p.codigo} {p.nome}</option>)}</select></Field>
           <Field label="Observação" className="col-span-2"><input className="input" value={modal.form.observacao} onChange={e => setModal({ ...modal, form: { ...modal.form, observacao: e.target.value } })} /></Field>

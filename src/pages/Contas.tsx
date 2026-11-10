@@ -19,6 +19,7 @@ export default function Contas() {
   const [err, setErr] = useState<string | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [mostrarInativas, setMostrarInativas] = useState(false)
+  const [atualizando, setAtualizando] = useState<string | null>(null)
 
   const q = useQuery(async () => {
     const [c, b, i] = await Promise.all([
@@ -54,6 +55,19 @@ export default function Contas() {
     if (error) alert(error.message); else q.refetch()
   }
 
+  const atualizarTudo = async () => {
+    const integs = (q.data?.integ ?? []).filter(i => i.external_item_id && i.status !== 'desconectado')
+    if (!integs.length) { alert('Nenhuma instituição conectada.'); return }
+    const from = new Date(); from.setMonth(from.getMonth() - 3)
+    const erros: string[] = []
+    for (const i of integs) {
+      setAtualizando(i.connector_nome ?? 'instituição')
+      try { await callFunction('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10) }) }
+      catch (e) { erros.push(`${i.connector_nome ?? i.id}: ${e instanceof Error ? e.message : String(e)}`) }
+    }
+    setAtualizando(null); q.refetch()
+    if (erros.length) alert('Algumas instituições falharam:\n' + erros.join('\n'))
+  }
   const sincronizar = async (c: Conta) => {
     const integ = q.data?.integ.find(i => i.id === c.integracao_id)
     if (!integ?.external_item_id) return
@@ -66,6 +80,7 @@ export default function Contas() {
     <div>
       <PageHeader title="Contas" actions={<>
         <label className="text-sm flex items-center gap-2 text-muted"><input type="checkbox" checked={mostrarInativas} onChange={e => setMostrarInativas(e.target.checked)} /> Mostrar inativas</label>
+        {podeEditar && <button className="btn" onClick={atualizarTudo} disabled={!!atualizando} title="Sincroniza saldos e lançamentos de todas as instituições conectadas (também roda automaticamente todo dia às 10h)"><RefreshCw size={16} className={atualizando ? 'animate-spin' : ''} /> {atualizando ? `Atualizando ${atualizando}…` : 'Atualizar'}</button>}
         <Link to="/integracoes" className="btn"><Link2 size={16} /> Conectar banco</Link>
         {podeEditar && <button className="btn btn-primary" onClick={() => setModal({ form: emptyForm() })}><Plus size={16} /> Nova conta manual</button>}
       </>} />

@@ -4,7 +4,7 @@ import { supabase, callFunction } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, Empty, ErrorBox, Loading, PageHeader } from '../components/ui'
-import { fmtDateTime } from '../lib/format'
+import { avisoAmigavel, fmtDateTime } from '../lib/format'
 import type { Integracao } from '../lib/types'
 
 declare global { interface Window { PluggyConnect?: new (opts: Record<string, unknown>) => { init: () => void } } }
@@ -84,7 +84,7 @@ export default function Integracoes() {
       const from = new Date(); from.setMonth(from.getMonth() - 24)
       const r = await callFunction<{ resumo: Record<string, number>; aviso?: string; item_updated_at?: string | null }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10), forcar: true })
       await supabase.from('contas').update({ ativa: true }).eq('integracao_id', i.id)
-      setMsg(`Sincronizado: ${r.resumo.contas} conta(s), ${r.resumo.lancamentos} lançamento(s), ${r.resumo.investimentos} investimento(s).${r.item_updated_at ? ` Dados do banco de ${new Date(r.item_updated_at).toLocaleString('pt-BR')}.` : ''}${r.aviso ? ` ${r.aviso}` : ''}`)
+      setMsg(`Sincronizado: ${r.resumo.contas} conta(s), ${r.resumo.lancamentos} lançamento(s), ${r.resumo.investimentos} investimento(s).${r.item_updated_at ? ` Dados do banco de ${new Date(r.item_updated_at).toLocaleString('pt-BR')}.` : ''}${r.aviso ? ` ${avisoAmigavel(r.aviso)}` : ''}`)
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)) } finally { setBusy(null); q.refetch() }
   }
 
@@ -120,8 +120,8 @@ export default function Integracoes() {
                       </div>
                       <Badge tone={st.tone}><st.icon size={12} /> {st.label}</Badge>
                     </div>
-                    {i.erro && <div className="text-xs text-neg bg-red-50 rounded-md px-2 py-1">{i.erro}</div>}
-                    <div className="text-xs text-muted">Última sincronização: <b>{fmtDateTime(i.ultima_sincronizacao)}</b></div>
+                    {i.erro && <div className={`text-xs rounded-md px-2 py-1 ${i.status === 'erro' ? 'text-neg bg-red-50' : 'text-amber-800 bg-amber-50'}`}>{avisoAmigavel(i.erro)}</div>}
+                    <div className="text-xs text-muted">Última cópia: <b>{fmtDateTime(i.ultima_sincronizacao)}</b>{(i as Integracao & { dados?: { item_updated_at?: string } }).dados?.item_updated_at && <> · Dado do banco de <b>{fmtDateTime((i as Integracao & { dados?: { item_updated_at?: string } }).dados!.item_updated_at!)}</b></>}</div>
                     {podeEditar && <div className="flex gap-2 border-t border-line pt-3">
                       <button className="btn flex-1 justify-center" onClick={() => sincronizar(i)} disabled={busy === i.id} title="Importa/atualiza os últimos 24 meses"><RefreshCw size={14} className={busy === i.id ? 'animate-spin' : ''} /> Sincronizar</button>
                       <button className="btn" title="Reautorizar consentimento" onClick={() => conectar(i.external_item_id ?? undefined, i.id)}><ShieldCheck size={14} /></button>

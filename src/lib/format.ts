@@ -45,3 +45,12 @@ export function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click()
 }
+
+/** Traduz avisos técnicos do agregador para linguagem de usuário. */
+export function avisoAmigavel(msg: string | null | undefined): string | null {
+  if (!msg) return null
+  if (/cant be updated|can't be updated|MeuPluggy item/i.test(msg)) return 'Conexão via Meu Pluggy: a busca de dados novos no banco é feita pelo próprio Meu Pluggy (automática, ~1x ao dia). Para forçar agora, abra meu.pluggy.ai → Conexões → Atualizar nessa instituição e depois clique em Atualizar aqui.'
+  if (/429|rate limit|too many/i.test(msg)) return 'Limite de atualizações do agregador atingido; tente novamente mais tarde.'
+  if (/LOGIN_ERROR|INVALID_CREDENTIALS|consent/i.test(msg)) return 'O consentimento com o banco expirou ou foi revogado. Reautorize a conexão (ícone de escudo em Integrações).'
+  return msg
+}

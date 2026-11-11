@@ -4,7 +4,7 @@ import { supabase, callFunction } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { Badge, Empty, ErrorBox, Field, Kpi, Loading, Modal, PageHeader } from '../components/ui'
-import { brl, fmtDateTime, TIPO_CONTA_LABEL } from '../lib/format'
+import { avisoAmigavel, brl, fmtDateTime, TIPO_CONTA_LABEL } from '../lib/format'
 import type { Banco, Conta, Integracao } from '../lib/types'
 import { Link } from 'react-router-dom'
 
@@ -62,17 +62,17 @@ export default function Contas() {
     const erros: string[] = []
     for (const i of integs) {
       setAtualizando(i.connector_nome ?? 'instituição')
-      try { const r = await callFunction<{ aviso?: string }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10), forcar: true }); if (r.aviso) erros.push(`${i.connector_nome ?? 'instituição'}: ${r.aviso}`) }
+      try { const r = await callFunction<{ aviso?: string }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10), forcar: true }); if (r.aviso) erros.push(`${i.connector_nome ?? 'instituição'}: ${avisoAmigavel(r.aviso)}`) }
       catch (e) { erros.push(`${i.connector_nome ?? i.id}: ${e instanceof Error ? e.message : String(e)}`) }
     }
     setAtualizando(null); q.refetch()
-    if (erros.length) alert('Avisos na atualização:\n' + erros.join('\n'))
+    if (erros.length) { const unicos = [...new Set(erros.map(e => e.split(': ').slice(1).join(': ')))]; alert('Saldos copiados do agregador.\n\n' + unicos.join('\n')) }
   }
   const sincronizar = async (c: Conta) => {
     const integ = q.data?.integ.find(i => i.id === c.integracao_id)
     if (!integ?.external_item_id) return
     setSyncing(c.id)
-    try { const from = new Date(); from.setMonth(from.getMonth() - 24); const r = await callFunction<{ aviso?: string }>('pluggy-sync', { workspace_id: ws, item_id: integ.external_item_id, integracao_id: integ.id, from: from.toISOString().slice(0, 10), forcar: true }); if (r.aviso) alert(r.aviso); q.refetch() }
+    try { const from = new Date(); from.setMonth(from.getMonth() - 24); const r = await callFunction<{ aviso?: string }>('pluggy-sync', { workspace_id: ws, item_id: integ.external_item_id, integracao_id: integ.id, from: from.toISOString().slice(0, 10), forcar: true }); if (r.aviso) alert(avisoAmigavel(r.aviso)); q.refetch() }
     catch (e) { alert(e instanceof Error ? e.message : String(e)) } finally { setSyncing(null) }
   }
 

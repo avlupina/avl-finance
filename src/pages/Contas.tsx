@@ -62,17 +62,17 @@ export default function Contas() {
     const erros: string[] = []
     for (const i of integs) {
       setAtualizando(i.connector_nome ?? 'instituição')
-      try { await callFunction('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10) }) }
+      try { const r = await callFunction<{ aviso?: string }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10), forcar: true }); if (r.aviso) erros.push(`${i.connector_nome ?? 'instituição'}: ${r.aviso}`) }
       catch (e) { erros.push(`${i.connector_nome ?? i.id}: ${e instanceof Error ? e.message : String(e)}`) }
     }
     setAtualizando(null); q.refetch()
-    if (erros.length) alert('Algumas instituições falharam:\n' + erros.join('\n'))
+    if (erros.length) alert('Avisos na atualização:\n' + erros.join('\n'))
   }
   const sincronizar = async (c: Conta) => {
     const integ = q.data?.integ.find(i => i.id === c.integracao_id)
     if (!integ?.external_item_id) return
     setSyncing(c.id)
-    try { const from = new Date(); from.setMonth(from.getMonth() - 24); await callFunction('pluggy-sync', { workspace_id: ws, item_id: integ.external_item_id, integracao_id: integ.id, from: from.toISOString().slice(0, 10) }); q.refetch() }
+    try { const from = new Date(); from.setMonth(from.getMonth() - 24); const r = await callFunction<{ aviso?: string }>('pluggy-sync', { workspace_id: ws, item_id: integ.external_item_id, integracao_id: integ.id, from: from.toISOString().slice(0, 10), forcar: true }); if (r.aviso) alert(r.aviso); q.refetch() }
     catch (e) { alert(e instanceof Error ? e.message : String(e)) } finally { setSyncing(null) }
   }
 
@@ -80,7 +80,7 @@ export default function Contas() {
     <div>
       <PageHeader title="Contas" actions={<>
         <label className="text-sm flex items-center gap-2 text-muted"><input type="checkbox" checked={mostrarInativas} onChange={e => setMostrarInativas(e.target.checked)} /> Mostrar inativas</label>
-        {podeEditar && <button className="btn" onClick={atualizarTudo} disabled={!!atualizando} title="Sincroniza saldos e lançamentos de todas as instituições conectadas (também roda automaticamente todo dia às 10h)"><RefreshCw size={16} className={atualizando ? 'animate-spin' : ''} /> {atualizando ? `Atualizando ${atualizando}…` : 'Atualizar'}</button>}
+        {podeEditar && <button className="btn" onClick={atualizarTudo} disabled={!!atualizando} title="Pede ao agregador para buscar dados novos em cada banco e atualiza saldos e lançamentos (também roda automaticamente todo dia às 10h). Pode levar ~1 min por instituição."><RefreshCw size={16} className={atualizando ? 'animate-spin' : ''} /> {atualizando ? `Atualizando ${atualizando}…` : 'Atualizar'}</button>}
         <Link to="/integracoes" className="btn"><Link2 size={16} /> Conectar banco</Link>
         {podeEditar && <button className="btn btn-primary" onClick={() => setModal({ form: emptyForm() })}><Plus size={16} /> Nova conta manual</button>}
       </>} />
@@ -116,7 +116,7 @@ export default function Contas() {
                   {c.tipo === 'cartao_credito' && c.limite != null && <div className="text-xs text-muted">Limite {brl(c.limite)}{c.vencimento_fatura ? ` · vence dia ${c.vencimento_fatura}` : ''}</div>}
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted border-t border-line pt-2">
-                  <span>{c.ultima_sincronizacao ? `Atualizado ${fmtDateTime(c.ultima_sincronizacao)}` : 'Saldo informado manualmente'}</span>
+                  <span title="Momento em que o banco forneceu o saldo ao agregador">{c.ultima_sincronizacao ? `Dado do banco de ${fmtDateTime(c.ultima_sincronizacao)}` : 'Saldo informado manualmente'}</span>
                   <div className="flex gap-1 no-print">
                     {c.integracao_id && podeEditar && <button className="btn btn-ghost p-1.5" title="Sincronizar agora" onClick={() => sincronizar(c)} disabled={syncing === c.id}><RefreshCw size={14} className={syncing === c.id ? 'animate-spin' : ''} /></button>}
                     {podeEditar && <button className="btn btn-ghost p-1.5" title="Editar" onClick={() => setModal({ id: c.id, form: { nome: c.nome, tipo: c.tipo, banco_id: c.banco_id ?? '', agencia: c.agencia ?? '', numero: c.numero ?? '', saldo_atual: String(c.saldo_atual), limite: c.limite != null ? String(c.limite) : '', fechamento_fatura: c.fechamento_fatura ? String(c.fechamento_fatura) : '', vencimento_fatura: c.vencimento_fatura ? String(c.vencimento_fatura) : '', ativa: c.ativa } })}><Pencil size={14} /></button>}

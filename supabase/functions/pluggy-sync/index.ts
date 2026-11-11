@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const { sb, user } = await requireUser(req);
-    const { workspace_id, item_id, integracao_id, from } = await req.json();
+    const { workspace_id, item_id, integracao_id, from, forcar } = await req.json();
     if (!workspace_id || !item_id) return json({ error: "workspace_id e item_id obrigatórios" }, 400);
     await assertCanEdit(sb, workspace_id);
 
@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
       itemId: item_id,
       integracaoId: integracao_id,
       userId: user.id,
-      fromDate: from,
+      fromDate: from, forcar: !!forcar,
     });
     return json({ ok: true, ...result });
   } catch (e) {

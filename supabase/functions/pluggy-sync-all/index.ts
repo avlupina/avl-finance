@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     const resultado: Record<string, unknown>[] = [];
     for (const i of integs ?? []) {
       try {
-        const r = await syncItem({ admin, apiKey, workspaceId: i.workspace_id, itemId: i.external_item_id!, integracaoId: i.id, userId: i.created_by ?? undefined, fromDate: from });
+        const r = await syncItem({ admin, apiKey, workspaceId: i.workspace_id, itemId: i.external_item_id!, integracaoId: i.id, userId: i.created_by ?? undefined, fromDate: from, forcar: true });
         resultado.push({ integracao: i.connector_nome, ok: true, ...r.resumo });
       } catch (e) {
         resultado.push({ integracao: i.connector_nome, ok: false, erro: e instanceof Error ? e.message : String(e) });

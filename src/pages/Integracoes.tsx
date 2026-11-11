@@ -82,9 +82,9 @@ export default function Integracoes() {
     setBusy(i.id); setErr(null); setMsg(null)
     try {
       const from = new Date(); from.setMonth(from.getMonth() - 24)
-      const r = await callFunction<{ resumo: Record<string, number> }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10) })
+      const r = await callFunction<{ resumo: Record<string, number>; aviso?: string; item_updated_at?: string | null }>('pluggy-sync', { workspace_id: ws, item_id: i.external_item_id, integracao_id: i.id, from: from.toISOString().slice(0, 10), forcar: true })
       await supabase.from('contas').update({ ativa: true }).eq('integracao_id', i.id)
-      setMsg(`Sincronizado: ${r.resumo.contas} conta(s), ${r.resumo.lancamentos} lançamento(s), ${r.resumo.investimentos} investimento(s).`)
+      setMsg(`Sincronizado: ${r.resumo.contas} conta(s), ${r.resumo.lancamentos} lançamento(s), ${r.resumo.investimentos} investimento(s).${r.item_updated_at ? ` Dados do banco de ${new Date(r.item_updated_at).toLocaleString('pt-BR')}.` : ''}${r.aviso ? ` ${r.aviso}` : ''}`)
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)) } finally { setBusy(null); q.refetch() }
   }
 

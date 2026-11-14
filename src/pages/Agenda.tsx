@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { CreditCard, CalendarDays, Plus, Pencil, Trash2, CheckCircle2, Repeat } from 'lucide-react'
+import { CreditCard, CalendarDays, Plus, Pencil, Trash2, CheckCircle2, Repeat, Settings2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
@@ -148,8 +148,8 @@ export default function Agenda() {
                       {e.origem === 'fatura' ? (podeEditar ? <>
                         <button className="btn btn-ghost p-1.5" title="Ajustar valor/data" onClick={() => setAjModal({ item: e, valor: String(e.valor), data: e.data, titulo: e.titulo, observacao: e.ajuste?.observacao ?? '' })}><Pencil size={15} /></button>
                         <button className="btn btn-ghost p-1.5 text-neg" title="Ocultar" onClick={() => ocultar(e)}><Trash2 size={15} /></button>
-                        <Link to="/contas" className="text-xs font-bold text-brand ml-1" title="Dia de vencimento/fechamento">contas</Link>
-                      </> : <Link to="/contas" className="text-xs font-bold text-brand">contas</Link>) : podeEditar && e.ev && <>
+                        <Link to="/contas" className="btn btn-ghost p-1.5 inline-flex" title="Configurar vencimento/fechamento do cartão"><Settings2 size={15} /></Link>
+                      </> : <Link to="/contas" className="btn btn-ghost p-1.5 inline-flex" title="Configurar vencimento/fechamento do cartão"><Settings2 size={15} /></Link>) : podeEditar && e.ev && <>
                         {e.ev.recorrencia === 'unica' && <button className="btn btn-ghost p-1.5 text-pos" title={e.ev.concluido ? 'Reabrir' : 'Concluir'} onClick={() => concluir(e.ev!)}><CheckCircle2 size={15} /></button>}
                         <button className="btn btn-ghost p-1.5" onClick={() => setModal({ id: e.ev!.id, form: { data: e.ev!.data, titulo: e.ev!.titulo, valor: String(e.ev!.valor), tipo: e.ev!.tipo, plano_conta_id: e.ev!.plano_conta_id ?? '', recorrencia: e.ev!.recorrencia, observacao: e.ev!.observacao ?? '' } })}><Pencil size={15} /></button>
                         <button className="btn btn-ghost p-1.5 text-neg" onClick={() => excluir(e.ev!)}><Trash2 size={15} /></button>

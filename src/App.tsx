@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Lancamentos from './pages/Lancamentos'
 import Status from './pages/Status'
 import Agenda from './pages/Agenda'
+import Movimento from './pages/Movimento'
 import Projecoes from './pages/Projecoes'
 import Plano from './pages/Plano'
 import Protecao from './pages/Protecao'
@@ -32,6 +33,7 @@ function Guard() {
         <Route index element={<Navigate to={first} replace />} />
         <Route path="/status" element={<Status />} />
         <Route path="/agenda" element={<Agenda />} />
+        <Route path="/movimento" element={<Movimento />} />
         <Route path="/lancamentos" element={<Lancamentos />} />
         <Route path="/projecoes" element={<Projecoes />} />
         <Route path="/plano" element={<Plano />} />

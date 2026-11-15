@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   ArrowLeftRight, BarChart3, PieChart, TrendingUp, Telescope, Landmark, Wallet, Plug, FolderCog, Users,
-  LogOut, ChevronDown, Menu, X, Gauge, CalendarClock, ClipboardList, ShieldCheck, CalendarDays,
+  LogOut, ChevronDown, Menu, X, Gauge, CalendarClock, ClipboardList, ShieldCheck, CalendarDays, Receipt,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth, type Modulo } from '../hooks/useAuth'
@@ -11,6 +11,7 @@ import { PAPEL_LABEL } from '../lib/format'
 export const NAV: { to: string; label: string; icon: typeof Wallet; modulo: Modulo; group: string; hint: string }[] = [
   { to: '/status', label: 'Status Atual', icon: Gauge, modulo: 'status', group: 'Visão', hint: 'Posição atualizada das finanças' },
   { to: '/agenda', label: 'Agenda', icon: CalendarDays, modulo: 'agenda', group: 'Visão', hint: 'Programação financeira dos próximos 30, 60 e 90 dias' },
+  { to: '/movimento', label: 'Movimento Financeiro', icon: Receipt, modulo: 'movimento', group: 'Visão', hint: 'Extrato integrado das contas com saldo diário' },
   { to: '/resultados', label: 'Resultados', icon: BarChart3, modulo: 'resultados', group: 'Gestão', hint: 'DRE pessoal, orçado x realizado' },
   { to: '/analise', label: 'Análise', icon: PieChart, modulo: 'analise', group: 'Gestão', hint: 'Indicadores e uso do dinheiro' },
   { to: '/investimentos', label: 'Investimentos', icon: TrendingUp, modulo: 'investimentos', group: 'Gestão', hint: 'Carteira e rentabilidade' },

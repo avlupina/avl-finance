@@ -107,13 +107,13 @@ function Bancos() {
   const ws = workspace!.id
   const podeEditar = canEditModule('cadastros')
   const q = useQuery(async () => { const { data, error } = await supabase.from('bancos').select('*').eq('workspace_id', ws).order('nome'); if (error) throw error; return data as Banco[] }, [ws])
-  const [modal, setModal] = useState<null | { id?: string; form: { nome: string; codigo_compe: string; ispb: string; cor: string; pluggy_connector_id: string; ativo: boolean } }>(null)
+  const [modal, setModal] = useState<null | { id?: string; form: { nome: string; sigla: string; codigo_compe: string; ispb: string; cor: string; pluggy_connector_id: string; ativo: boolean } }>(null)
   const [err, setErr] = useState<string | null>(null)
 
   const salvar = async (e: FormEvent) => {
     e.preventDefault(); if (!modal) return; setErr(null)
     const f = modal.form
-    const payload = { workspace_id: ws, nome: f.nome.trim(), codigo_compe: f.codigo_compe || null, ispb: f.ispb || null, cor: f.cor || '#104862', pluggy_connector_id: f.pluggy_connector_id ? Number(f.pluggy_connector_id) : null, ativo: f.ativo }
+    const payload = { workspace_id: ws, nome: f.nome.trim(), sigla: f.sigla.trim() || null, codigo_compe: f.codigo_compe || null, ispb: f.ispb || null, cor: f.cor || '#104862', pluggy_connector_id: f.pluggy_connector_id ? Number(f.pluggy_connector_id) : null, ativo: f.ativo }
     const r = modal.id ? await supabase.from('bancos').update(payload).eq('id', modal.id) : await supabase.from('bancos').insert(payload)
     if (r.error) { setErr(r.error.message); return }
     setModal(null); q.refetch()
@@ -125,22 +125,23 @@ function Bancos() {
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted">Instituições financeiras disponíveis para vincular às contas. O <b>ID do conector Pluggy</b> permite associar automaticamente as contas importadas.</p>
-        {podeEditar && <button className="btn btn-primary" onClick={() => setModal({ form: { nome: '', codigo_compe: '', ispb: '', cor: '#104862', pluggy_connector_id: '', ativo: true } })}><Plus size={16} /> Novo banco</button>}
+        {podeEditar && <button className="btn btn-primary" onClick={() => setModal({ form: { nome: '', sigla: '', codigo_compe: '', ispb: '', cor: '#104862', pluggy_connector_id: '', ativo: true } })}><Plus size={16} /> Novo banco</button>}
       </div>
       <div className="card overflow-x-auto">
         <table className="tbl">
-          <thead><tr><th></th><th>Banco</th><th>COMPE</th><th>ISPB</th><th>Conector Pluggy</th><th>Status</th>{podeEditar && <th></th>}</tr></thead>
+          <thead><tr><th></th><th>Banco</th><th>Sigla</th><th>COMPE</th><th>ISPB</th><th>Conector Pluggy</th><th>Status</th>{podeEditar && <th></th>}</tr></thead>
           <tbody>
             {(q.data ?? []).map(b => (
               <tr key={b.id} className={!b.ativo ? 'opacity-50' : ''}>
                 <td><span className="inline-block w-5 h-5 rounded-md border border-line" style={{ background: b.cor ?? '#104862' }} /></td>
                 <td className="font-bold">{b.nome}</td>
+                <td>{b.sigla ?? <span className="text-muted">—</span>}</td>
                 <td className="num">{b.codigo_compe ?? '—'}</td>
                 <td className="num text-muted">{b.ispb ?? '—'}</td>
                 <td className="num">{b.pluggy_connector_id ?? <span className="text-muted">—</span>}</td>
                 <td><Badge tone={b.ativo ? 'green' : 'gray'}>{b.ativo ? 'ativo' : 'inativo'}</Badge></td>
                 {podeEditar && <td className="text-right whitespace-nowrap">
-                  <button className="btn btn-ghost p-1.5" onClick={() => setModal({ id: b.id, form: { nome: b.nome, codigo_compe: b.codigo_compe ?? '', ispb: b.ispb ?? '', cor: b.cor ?? '#104862', pluggy_connector_id: b.pluggy_connector_id ? String(b.pluggy_connector_id) : '', ativo: b.ativo } })}><Pencil size={15} /></button>
+                  <button className="btn btn-ghost p-1.5" onClick={() => setModal({ id: b.id, form: { nome: b.nome, sigla: b.sigla ?? '', codigo_compe: b.codigo_compe ?? '', ispb: b.ispb ?? '', cor: b.cor ?? '#104862', pluggy_connector_id: b.pluggy_connector_id ? String(b.pluggy_connector_id) : '', ativo: b.ativo } })}><Pencil size={15} /></button>
                   <button className="btn btn-ghost p-1.5 text-neg" onClick={() => excluir(b)}><Trash2 size={15} /></button>
                 </td>}
               </tr>
@@ -151,6 +152,7 @@ function Bancos() {
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal?.id ? 'Editar banco' : 'Novo banco'}>
         {modal && <form onSubmit={salvar} className="grid grid-cols-2 gap-3">
           <Field label="Nome" className="col-span-2"><input className="input" required value={modal.form.nome} onChange={e => setModal({ ...modal, form: { ...modal.form, nome: e.target.value } })} /></Field>
+          <Field label="Sigla"><input className="input" maxLength={12} placeholder="ex.: BB" value={modal.form.sigla} onChange={e => setModal({ ...modal, form: { ...modal.form, sigla: e.target.value.toUpperCase() } })} /></Field>
           <Field label="Código COMPE"><input className="input" value={modal.form.codigo_compe} onChange={e => setModal({ ...modal, form: { ...modal.form, codigo_compe: e.target.value } })} /></Field>
           <Field label="ISPB"><input className="input" value={modal.form.ispb} onChange={e => setModal({ ...modal, form: { ...modal.form, ispb: e.target.value } })} /></Field>
           <Field label="Cor"><input className="input h-10 p-1" type="color" value={modal.form.cor} onChange={e => setModal({ ...modal, form: { ...modal.form, cor: e.target.value } })} /></Field>

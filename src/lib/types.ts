@@ -1,4 +1,4 @@
-export interface Banco { id: string; workspace_id: string; nome: string; codigo_compe: string | null; ispb: string | null; cor: string | null; pluggy_connector_id: number | null; ativo: boolean }
+export interface Banco { id: string; workspace_id: string; nome: string; codigo_compe: string | null; sigla: string | null; ispb: string | null; cor: string | null; pluggy_connector_id: number | null; ativo: boolean }
 export interface PlanoConta { id: string; workspace_id: string; parent_id: string | null; codigo: string; nome: string; tipo: 'receita' | 'despesa' | 'transferencia' | 'investimento'; natureza: 'fixa' | 'variavel' | null; ativo: boolean }
 export interface Conta {
   id: string; workspace_id: string; banco_id: string | null; integracao_id: string | null; external_id: string | null; nome: string;

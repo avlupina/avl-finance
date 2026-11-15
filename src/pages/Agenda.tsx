@@ -9,7 +9,7 @@ import { brl, fmtDate, todayISO } from '../lib/format'
 import { MoneyInput } from '../components/MoneyInput'
 import type { Conta, PlanoConta } from '../lib/types'
 
-type Horizonte = '30' | '60' | '90'
+type Horizonte = '30' | '60' | '90' | 'custom'
 interface AgendaEvento { id: string; data: string; titulo: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; plano_conta_id: string | null; recorrencia: 'unica' | 'mensal' | 'anual'; concluido: boolean; observacao: string | null }
 interface Ajuste { id: string; chave: string; valor: number | null; data: string | null; titulo: string | null; observacao: string | null; oculto: boolean }
 interface Item { key: string; data: string; titulo: string; detalhe: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; origem: 'fatura' | 'manual'; ev?: AgendaEvento; ajuste?: Ajuste; conta?: Conta; concluido?: boolean }
@@ -18,34 +18,37 @@ const addDias = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.get
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 const emptyForm = () => ({ data: todayISO(), titulo: '', valor: '', tipo: 'despesa' as AgendaEvento['tipo'], plano_conta_id: '', recorrencia: 'unica' as AgendaEvento['recorrencia'], observacao: '' })
 
-/** Agenda: faturas dos cartões (vencimento) + compromissos lançados manualmente, nos próximos 30/60/90 dias. */
+/** Agenda: faturas dos cartões (vencimento) + compromissos lançados manualmente — próximos 30/60/90 dias ou período livre (passado ou futuro). */
 export default function Agenda() {
   const { workspace, canEditModule, user } = useAuth()
   const ws = workspace!.id
   const podeEditar = canEditModule('agenda')
   const [h, setH] = useState<Horizonte>('30')
+  const [custom, setCustom] = useState<{ ini: string; fim: string }>(() => { const t = new Date(todayISO() + 'T12:00:00'); return { ini: iso(new Date(t.getFullYear(), t.getMonth(), 1, 12)), fim: iso(new Date(t.getFullYear(), t.getMonth() + 1, 0, 12)) } })
   const [modal, setModal] = useState<null | { id?: string; form: ReturnType<typeof emptyForm> }>(null)
   const [err, setErr] = useState<string | null>(null)
   const [ajModal, setAjModal] = useState<null | { item: Item; valor: string; data: string; titulo: string; observacao: string }>(null)
   const hoje = new Date(todayISO() + 'T12:00:00')
-  const fim = addDias(hoje, Number(h))
+  const ini = h === 'custom' ? new Date(custom.ini + 'T12:00:00') : hoje
+  const fim = h === 'custom' ? new Date(custom.fim + 'T12:00:00') : addDias(hoje, Number(h))
+  const mesesDiff = (a: Date, b: Date) => (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth())
 
   const q = useQuery(async () => {
     const [c, e, p, aj, tx] = await Promise.all([
       supabase.from('contas').select('*').eq('workspace_id', ws).eq('ativa', true),
-      supabase.from('agenda_eventos').select('*').eq('workspace_id', ws).gte('data', iso(addDias(hoje, -400))).lte('data', iso(fim)).order('data'),
+      supabase.from('agenda_eventos').select('*').eq('workspace_id', ws).gte('data', iso(addDias(ini, -400))).lte('data', iso(fim)).order('data'),
       supabase.from('plano_contas').select('*').eq('workspace_id', ws).eq('ativo', true).order('codigo'),
       supabase.from('agenda_ajustes').select('*').eq('workspace_id', ws),
-      supabase.from('lancamentos').select('conta_id, data, valor, tipo').eq('workspace_id', ws).gte('data', iso(addDias(hoje, -70))).lte('data', iso(addDias(fim, 40))).neq('tipo', 'transferencia').limit(20000),
+      supabase.from('lancamentos').select('conta_id, data, valor, tipo').eq('workspace_id', ws).gte('data', iso(addDias(ini, -70))).lte('data', iso(addDias(fim, 40))).neq('tipo', 'transferencia').limit(20000),
     ])
     if (e.error) throw e.error
     return { contas: c.data as Conta[], eventos: e.data as AgendaEvento[], planos: (p.data ?? []) as PlanoConta[], ajustes: (aj.data ?? []) as Ajuste[], tx: (tx.data ?? []) as { conta_id: string; data: string; valor: number; tipo: string }[] }
-  }, [ws, h])
+  }, [ws, h, custom.ini, custom.fim])
 
   const itens = useMemo<Item[]>(() => {
     const d = q.data; if (!d) return []
     const out: Item[] = []
-    const dentro = (s: string) => s >= iso(hoje) && s <= iso(fim)
+    const dentro = (s: string) => s >= iso(ini) && s <= iso(fim)
     // Faturas de cartão — valor do ciclo (compras entre o fechamento anterior e o fechamento do ciclo), não o saldo total devedor.
     const ajusteDe = (chave: string) => d.ajustes.find(a => a.chave === chave)
     for (const c of d.contas.filter(x => x.tipo === 'cartao_credito')) {
@@ -56,7 +59,7 @@ export default function Agenda() {
       }
       const fech = c.fechamento_fatura ?? Math.max(1, venc - 7)                 // sem fechamento informado: assume 7 dias antes do vencimento
       const txConta = d.tx.filter(t => t.conta_id === c.id)
-      for (let k = -1; k <= 3; k++) {
+      for (let k = mesesDiff(hoje, ini) - 1; k <= mesesDiff(hoje, fim) + 1; k++) {
         const ultimoDia = (y: number, m: number) => new Date(y, m + 1, 0).getDate()
         const dtVenc = new Date(hoje.getFullYear(), hoje.getMonth() + k, Math.min(venc, ultimoDia(hoje.getFullYear(), hoje.getMonth() + k)), 12)
         // fechamento do ciclo: mesmo mês do vencimento se fech < venc, senão mês anterior
@@ -84,15 +87,21 @@ export default function Agenda() {
       for (const s of datas) if (dentro(s)) out.push({ key: `m-${ev.id}-${s}`, data: s, titulo: ev.titulo, detalhe: [nomePlano(ev.plano_conta_id), ev.recorrencia !== 'unica' ? (ev.recorrencia === 'mensal' ? 'mensal' : 'anual') : null, ev.observacao].filter(Boolean).join(' · '), valor: Number(ev.valor), tipo: ev.tipo, origem: 'manual', ev, concluido: ev.recorrencia === 'unica' && ev.concluido })
     }
     return out.sort((a, b) => a.data.localeCompare(b.data))
-  }, [q.data, h])
+  }, [q.data, h, custom.ini, custom.fim])
 
   const tot = itens.filter(i => !i.concluido).reduce((a, e) => { if (e.tipo === 'despesa') a.d += e.valor; else if (e.tipo === 'receita') a.r += e.valor; return a }, { d: 0, r: 0 })
   const disponivel = (q.data?.contas ?? []).filter(c => c.tipo !== 'cartao_credito').reduce((a, c) => a + Number(c.saldo_atual), 0)
   const grupos = useMemo(() => {
     const m: Record<string, Item[]> = {}
-    for (const e of itens) { const diff = Math.floor((new Date(e.data + 'T12:00:00').getTime() - hoje.getTime()) / 86400000); const k = diff < 7 ? 'Próximos 7 dias' : diff < 14 ? 'Em 1–2 semanas' : diff < 30 ? 'Em 2–4 semanas' : diff < 60 ? 'Em 1–2 meses' : 'Em 2–3 meses'; (m[k] ??= []).push(e) }
+    for (const e of itens) {
+      const dt = new Date(e.data + 'T12:00:00')
+      let k: string
+      if (h === 'custom') { const lbl = dt.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); k = lbl.charAt(0).toUpperCase() + lbl.slice(1) }
+      else { const diff = Math.floor((dt.getTime() - hoje.getTime()) / 86400000); k = diff < 7 ? 'Próximos 7 dias' : diff < 14 ? 'Em 1–2 semanas' : diff < 30 ? 'Em 2–4 semanas' : diff < 60 ? 'Em 1–2 meses' : 'Em 2–3 meses' }
+      (m[k] ??= []).push(e)
+    }
     return Object.entries(m)
-  }, [itens])
+  }, [itens, h])
 
   const salvar = async (e: FormEvent) => {
     e.preventDefault(); if (!modal) return; setErr(null)
@@ -116,10 +125,15 @@ export default function Agenda() {
   return (
     <div>
       <PageHeader crumb="Visão" title="Agenda" actions={<>
-        <Tabs tabs={[{ key: '30', label: '30 dias' }, { key: '60', label: '60 dias' }, { key: '90', label: '90 dias' }]} value={h} onChange={setH} />
+        <Tabs tabs={[{ key: '30', label: '30 dias' }, { key: '60', label: '60 dias' }, { key: '90', label: '90 dias' }, { key: 'custom', label: 'Período' }]} value={h} onChange={setH} />
+        {h === 'custom' && <div className="flex items-center gap-2 text-sm">
+          <input type="date" className="input w-auto py-1.5" value={custom.ini} max={custom.fim} onChange={e => setCustom(c => ({ ...c, ini: e.target.value || c.ini }))} />
+          <span className="text-muted">a</span>
+          <input type="date" className="input w-auto py-1.5" value={custom.fim} min={custom.ini} onChange={e => setCustom(c => ({ ...c, fim: e.target.value || c.fim }))} />
+        </div>}
         {podeEditar && <button className="btn btn-primary" onClick={() => setModal({ form: emptyForm() })}><Plus size={16} /> Novo compromisso</button>}
       </>}>
-        <p className="text-sm text-muted">De {fmtDate(iso(hoje))} a {fmtDate(iso(fim))}: faturas dos cartões calculadas por ciclo de fechamento (não o saldo total devedor) e compromissos lançados por você. Todos os itens podem ser ajustados.</p>
+        <p className="text-sm text-muted">De {fmtDate(iso(ini))} a {fmtDate(iso(fim))}{iso(fim) < iso(hoje) ? ' (período passado)' : ''}: faturas dos cartões calculadas por ciclo de fechamento (não o saldo total devedor) e compromissos lançados por você. Todos os itens podem ser ajustados.</p>
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

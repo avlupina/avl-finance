@@ -12,7 +12,7 @@ export const NAV: { to: string; label: string; icon: typeof Wallet; modulo: Modu
   { to: '/status', label: 'Status Atual', icon: Gauge, modulo: 'status', group: 'Visão', hint: 'Posição atualizada das finanças' },
   { to: '/agenda', label: 'Agenda', icon: CalendarDays, modulo: 'agenda', group: 'Visão', hint: 'Programação financeira dos próximos 30, 60 e 90 dias' },
   { to: '/movimento', label: 'Movimento Financeiro', icon: Receipt, modulo: 'movimento', group: 'Visão', hint: 'Extrato integrado das contas com saldo diário' },
-  { to: '/fluxo', label: 'Fluxo Diário', icon: CalendarRange, modulo: 'fluxo', group: 'Visão', hint: 'Saldo inicial, entradas, saídas e saldo final por dia' },
+  { to: '/fluxo', label: 'Fluxo Diário', icon: CalendarRange, modulo: 'fluxo', group: 'Visão', hint: 'Fluxo de caixa contínuo: realizado até hoje e projetado adiante' },
   { to: '/ncg', label: 'NCG', icon: Droplets, modulo: 'ncg', group: 'Visão', hint: 'Necessidade de capital para 7 a 90 dias' },
   { to: '/resultados', label: 'Resultados', icon: BarChart3, modulo: 'resultados', group: 'Gestão', hint: 'DRE pessoal, orçado x realizado' },
   { to: '/analise', label: 'Análise', icon: PieChart, modulo: 'analise', group: 'Gestão', hint: 'Indicadores e uso do dinheiro' },

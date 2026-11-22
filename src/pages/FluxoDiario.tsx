@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Download } from 'lucide-react'
-import { useAuth } from '../../hooks/useAuth'
-import { useQuery } from '../../hooks/useQuery'
-import { Empty, ErrorBox, Kpi, Loading, Tabs } from '../../components/ui'
-import { brl, downloadCSV, fmtDate, todayISO } from '../../lib/format'
-import { addDias, iso, carregarFluxoRealizado, calcularFluxoRealizado } from '../../lib/fluxo'
+import { useAuth } from '../hooks/useAuth'
+import { useQuery } from '../hooks/useQuery'
+import { Empty, ErrorBox, Kpi, Loading, PageHeader, Tabs } from '../components/ui'
+import { brl, downloadCSV, fmtDate, todayISO } from '../lib/format'
+import { addDias, iso, carregarFluxoRealizado, calcularFluxoRealizado } from '../lib/fluxo'
 
 type Periodo = '15' | '30' | '60' | '90' | 'custom'
 
@@ -25,16 +25,15 @@ export default function FluxoDiario() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <PageHeader crumb="Visão" title="Fluxo Diário" actions={<>
         <Tabs tabs={[{ key: '15', label: '15 dias' }, { key: '30', label: '30 dias' }, { key: '60', label: '60 dias' }, { key: '90', label: '90 dias' }, { key: 'custom', label: 'Período' }]} value={p} onChange={setP} />
         {p === 'custom' && <div className="flex items-center gap-2 text-sm">
           <input type="date" className="input w-auto py-1.5" value={custom.ini} max={custom.fim} onChange={e => setCustom(c => ({ ...c, ini: e.target.value || c.ini }))} />
           <span className="text-muted">a</span>
           <input type="date" className="input w-auto py-1.5" value={custom.fim} min={custom.ini} onChange={e => setCustom(c => ({ ...c, fim: e.target.value || c.fim }))} />
         </div>}
-        <div className="flex-1" />
         <button className="btn btn-ghost" onClick={exportar} title="Exportar CSV"><Download size={16} /></button>
-      </div>
+      </>} />
 
       {q.loading ? <Loading /> : q.error ? <ErrorBox msg={q.error} /> : !m ? null : (<>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

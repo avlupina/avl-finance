@@ -1,11 +1,11 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
-import { useAuth } from '../../hooks/useAuth'
-import { useQuery } from '../../hooks/useQuery'
-import { Badge, ErrorBox, Kpi, Loading } from '../../components/ui'
-import { brl, fmtDate, todayISO } from '../../lib/format'
-import { addDias, iso, carregarAgenda, calcularItensProjetados, type ItemProjetado } from '../../lib/fluxo'
+import { useAuth } from '../hooks/useAuth'
+import { useQuery } from '../hooks/useQuery'
+import { Badge, ErrorBox, Kpi, Loading, PageHeader } from '../components/ui'
+import { brl, fmtDate, todayISO } from '../lib/format'
+import { addDias, iso, carregarAgenda, calcularItensProjetados, type ItemProjetado } from '../lib/fluxo'
 
 const HORIZONTES = [7, 15, 30, 60, 90] as const
 
@@ -42,13 +42,12 @@ export default function NCG() {
     return { disponivel, linha, horizontes, totalItens: itens.length, origens: { fatura: itens.filter(i => i.origem === 'fatura').length, manual: itens.filter(i => i.origem === 'manual').length, projecao: itens.filter(i => i.origem === 'projecao').length } }
   }, [q.data])
 
-  if (q.loading) return <Loading />
-  if (q.error) return <ErrorBox msg={q.error} />
-  if (!m) return null
-  const pior = m.horizontes.reduce((a, h) => h.ncg > a.ncg ? h : a, m.horizontes[0])
+  const pior = m ? m.horizontes.reduce((a, h) => h.ncg > a.ncg ? h : a, m.horizontes[0]) : null
 
   return (
     <div>
+      <PageHeader crumb="Visão" title="NCG — Necessidade de Capital" actions={<div className="text-xs text-muted">Horizontes de 7 a 90 dias a partir de {fmtDate(iso(hoje))}</div>} />
+      {q.loading ? <Loading /> : q.error ? <ErrorBox msg={q.error} /> : !m || !pior ? null : <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <Kpi label="Disponível hoje" value={brl(m.disponivel)} tone="brand" sub="contas correntes, poupança e dinheiro" />
         <Kpi label="Saídas previstas (90 dias)" value={brl(m.horizontes[4].saidas)} tone="neg" sub={`${m.origens.fatura} fatura(s) · ${m.origens.manual} compromisso(s) · ${m.origens.projecao} projeção(ões)`} />
@@ -98,6 +97,7 @@ export default function NCG() {
           </table>
         )}
       </div>
+      </>}
     </div>
   )
 }

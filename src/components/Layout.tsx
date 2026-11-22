@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   ArrowLeftRight, BarChart3, PieChart, TrendingUp, Telescope, Landmark, Wallet, Plug, FolderCog, Users,
-  LogOut, ChevronDown, Menu, X, Gauge, CalendarClock, ClipboardList, ShieldCheck, CalendarDays, Receipt,
+  LogOut, ChevronDown, Menu, X, Gauge, CalendarClock, ClipboardList, ShieldCheck, CalendarDays, Receipt, CalendarRange, Droplets,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth, type Modulo } from '../hooks/useAuth'
@@ -12,6 +12,8 @@ export const NAV: { to: string; label: string; icon: typeof Wallet; modulo: Modu
   { to: '/status', label: 'Status Atual', icon: Gauge, modulo: 'status', group: 'Visão', hint: 'Posição atualizada das finanças' },
   { to: '/agenda', label: 'Agenda', icon: CalendarDays, modulo: 'agenda', group: 'Visão', hint: 'Programação financeira dos próximos 30, 60 e 90 dias' },
   { to: '/movimento', label: 'Movimento Financeiro', icon: Receipt, modulo: 'movimento', group: 'Visão', hint: 'Extrato integrado das contas com saldo diário' },
+  { to: '/fluxo', label: 'Fluxo Diário', icon: CalendarRange, modulo: 'fluxo', group: 'Visão', hint: 'Saldo inicial, entradas, saídas e saldo final por dia' },
+  { to: '/ncg', label: 'NCG', icon: Droplets, modulo: 'ncg', group: 'Visão', hint: 'Necessidade de capital para 7 a 90 dias' },
   { to: '/resultados', label: 'Resultados', icon: BarChart3, modulo: 'resultados', group: 'Gestão', hint: 'DRE pessoal, orçado x realizado' },
   { to: '/analise', label: 'Análise', icon: PieChart, modulo: 'analise', group: 'Gestão', hint: 'Indicadores e uso do dinheiro' },
   { to: '/investimentos', label: 'Investimentos', icon: TrendingUp, modulo: 'investimentos', group: 'Gestão', hint: 'Carteira e rentabilidade' },
@@ -36,6 +38,8 @@ export default function Layout() {
   const [fechados, setFechados] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem('avl.menu') ?? '{}') } catch { return {} } })
   const toggleGrupo = (g: string) => setFechados(f => { const n = { ...f, [g]: !f[g] }; localStorage.setItem('avl.menu', JSON.stringify(n)); return n })
   const { pathname } = useLocation()
+  // Ao navegar para uma página de um grupo recolhido, abre o grupo (sem travar o botão de recolher).
+  useEffect(() => { const g = nav.find(n => pathname.startsWith(n.to))?.group; if (g && fechados[g]) setFechados(f => { const n = { ...f, [g]: false }; localStorage.setItem('avl.menu', JSON.stringify(n)); return n }) }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const initials = (profile?.nome ?? user?.email ?? 'U').split(/[\s@.]/).filter(Boolean).slice(0, 3).map(s => s[0]?.toUpperCase()).join('')
 
@@ -66,7 +70,7 @@ export default function Layout() {
 
 
         <nav className="flex-1 overflow-y-auto px-3 pb-3">
-          {groups.map(g => { const itens = nav.filter(n => n.group === g); const ativo = itens.some(n => pathname.startsWith(n.to)); const aberto = !fechados[g] || ativo; return (
+          {groups.map(g => { const itens = nav.filter(n => n.group === g); const aberto = !fechados[g]; return (
             <div key={g} className="mb-1">
               <button onClick={() => toggleGrupo(g)} className="w-full flex items-center justify-between px-2 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-white/50 hover:text-white/80">
                 <span>{g}</span><ChevronDown size={13} className={`transition-transform ${aberto ? '' : '-rotate-90'}`} />

@@ -7,15 +7,10 @@ import { useQuery } from '../hooks/useQuery'
 import { Badge, Empty, ErrorBox, Field, Kpi, Loading, Modal, MoneyCell, PageHeader, Tabs } from '../components/ui'
 import { brl, fmtDate, todayISO } from '../lib/format'
 import { MoneyInput } from '../components/MoneyInput'
-import type { Conta, PlanoConta } from '../lib/types'
+import { addDias, iso, carregarAgenda, calcularItensProjetados, type AgendaEvento, type ItemProjetado } from '../lib/fluxo'
 
 type Horizonte = '30' | '60' | '90' | 'custom'
-interface AgendaEvento { id: string; data: string; titulo: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; plano_conta_id: string | null; recorrencia: 'unica' | 'mensal' | 'anual'; concluido: boolean; observacao: string | null }
-interface Ajuste { id: string; chave: string; valor: number | null; data: string | null; titulo: string | null; observacao: string | null; oculto: boolean }
-interface Item { key: string; data: string; titulo: string; detalhe: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; origem: 'fatura' | 'manual'; ev?: AgendaEvento; ajuste?: Ajuste; conta?: Conta; concluido?: boolean }
-
-const addDias = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
-const iso = (d: Date) => d.toISOString().slice(0, 10)
+type Item = ItemProjetado
 const emptyForm = () => ({ data: todayISO(), titulo: '', valor: '', tipo: 'despesa' as AgendaEvento['tipo'], plano_conta_id: '', recorrencia: 'unica' as AgendaEvento['recorrencia'], observacao: '' })
 
 /** Agenda: faturas dos cartões (vencimento) + compromissos lançados manualmente — próximos 30/60/90 dias ou período livre (passado ou futuro). */
@@ -31,63 +26,10 @@ export default function Agenda() {
   const hoje = new Date(todayISO() + 'T12:00:00')
   const ini = h === 'custom' ? new Date(custom.ini + 'T12:00:00') : hoje
   const fim = h === 'custom' ? new Date(custom.fim + 'T12:00:00') : addDias(hoje, Number(h))
-  const mesesDiff = (a: Date, b: Date) => (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth())
 
-  const q = useQuery(async () => {
-    const [c, e, p, aj, tx] = await Promise.all([
-      supabase.from('contas').select('*').eq('workspace_id', ws).eq('ativa', true),
-      supabase.from('agenda_eventos').select('*').eq('workspace_id', ws).gte('data', iso(addDias(ini, -400))).lte('data', iso(fim)).order('data'),
-      supabase.from('plano_contas').select('*').eq('workspace_id', ws).eq('ativo', true).order('codigo'),
-      supabase.from('agenda_ajustes').select('*').eq('workspace_id', ws),
-      supabase.from('lancamentos').select('conta_id, data, valor, tipo').eq('workspace_id', ws).gte('data', iso(addDias(ini, -70))).lte('data', iso(addDias(fim, 40))).neq('tipo', 'transferencia').limit(20000),
-    ])
-    if (e.error) throw e.error
-    return { contas: c.data as Conta[], eventos: e.data as AgendaEvento[], planos: (p.data ?? []) as PlanoConta[], ajustes: (aj.data ?? []) as Ajuste[], tx: (tx.data ?? []) as { conta_id: string; data: string; valor: number; tipo: string }[] }
-  }, [ws, h, custom.ini, custom.fim])
+  const q = useQuery(() => carregarAgenda(ws, ini, fim), [ws, h, custom.ini, custom.fim])
 
-  const itens = useMemo<Item[]>(() => {
-    const d = q.data; if (!d) return []
-    const out: Item[] = []
-    const dentro = (s: string) => s >= iso(ini) && s <= iso(fim)
-    // Faturas de cartão — valor do ciclo (compras entre o fechamento anterior e o fechamento do ciclo), não o saldo total devedor.
-    const ajusteDe = (chave: string) => d.ajustes.find(a => a.chave === chave)
-    for (const c of d.contas.filter(x => x.tipo === 'cartao_credito')) {
-      const venc = c.vencimento_fatura
-      if (!venc) {
-        const chave = `fatura:${c.id}:sem-data`; const aj = ajusteDe(chave); if (aj?.oculto) continue
-        out.push({ key: chave, data: aj?.data ?? iso(hoje), titulo: aj?.titulo ?? `Fatura ${c.nome}`, detalhe: aj?.observacao ?? 'informe o dia de vencimento em Contas para posicionar e calcular por ciclo', valor: aj?.valor ?? Math.abs(Number(c.saldo_atual)), tipo: 'despesa', origem: 'fatura', ajuste: aj, conta: c }); continue
-      }
-      const fech = c.fechamento_fatura ?? Math.max(1, venc - 7)                 // sem fechamento informado: assume 7 dias antes do vencimento
-      const txConta = d.tx.filter(t => t.conta_id === c.id)
-      for (let k = mesesDiff(hoje, ini) - 1; k <= mesesDiff(hoje, fim) + 1; k++) {
-        const ultimoDia = (y: number, m: number) => new Date(y, m + 1, 0).getDate()
-        const dtVenc = new Date(hoje.getFullYear(), hoje.getMonth() + k, Math.min(venc, ultimoDia(hoje.getFullYear(), hoje.getMonth() + k)), 12)
-        // fechamento do ciclo: mesmo mês do vencimento se fech < venc, senão mês anterior
-        const mesFech = fech < venc ? 0 : -1
-        const dtFech = new Date(dtVenc.getFullYear(), dtVenc.getMonth() + mesFech, Math.min(fech, ultimoDia(dtVenc.getFullYear(), dtVenc.getMonth() + mesFech)), 12)
-        const dtFechAnt = new Date(dtFech.getFullYear(), dtFech.getMonth() - 1, Math.min(fech, ultimoDia(dtFech.getFullYear(), dtFech.getMonth() - 1)), 12)
-        const sVenc = iso(dtVenc); if (!dentro(sVenc)) continue
-        const chave = `fatura:${c.id}:${sVenc}`; const aj = ajusteDe(chave); if (aj?.oculto) continue
-        const ciclo = txConta.filter(t => t.data > iso(dtFechAnt) && t.data <= iso(dtFech))
-        const calc = ciclo.reduce((a, t) => a + (t.tipo === 'despesa' ? Number(t.valor) : -Number(t.valor)), 0)
-        const fechado = iso(dtFech) <= iso(hoje)
-        const temDados = ciclo.length > 0
-        const valor = aj?.valor ?? (temDados ? Math.max(0, calc) : (k <= 0 ? Math.abs(Number(c.saldo_atual)) : 0))
-        const detalhe = aj?.observacao ?? (aj?.valor != null ? 'valor ajustado manualmente' : temDados ? `${ciclo.length} lançamentos de ${fmtDate(iso(addDias(dtFechAnt, 1)))} a ${fmtDate(iso(dtFech))}${fechado ? '' : ' · ciclo em aberto (parcial)'}` : k <= 0 ? 'sem lançamentos no ciclo — usando saldo informado pelo banco' : 'sem lançamentos previstos no ciclo')
-        out.push({ key: chave, data: aj?.data ?? sVenc, titulo: aj?.titulo ?? `Fatura ${c.nome}`, detalhe, valor, tipo: 'despesa', origem: 'fatura', ajuste: aj, conta: c })
-      }
-    }
-    // Lançamentos manuais (com recorrência)
-    const nomePlano = (id: string | null) => d.planos.find(p => p.id === id)?.nome
-    for (const ev of d.eventos) {
-      const base = new Date(ev.data + 'T12:00:00')
-      const datas: string[] = []
-      if (ev.recorrencia === 'unica') datas.push(ev.data)
-      else for (let k = 0; k <= 36; k++) { const dt = ev.recorrencia === 'mensal' ? new Date(base.getFullYear(), base.getMonth() + k, Math.min(base.getDate(), new Date(base.getFullYear(), base.getMonth() + k + 1, 0).getDate()), 12) : new Date(base.getFullYear() + k, base.getMonth(), base.getDate(), 12); const s = iso(dt); if (s > iso(fim)) break; datas.push(s) }
-      for (const s of datas) if (dentro(s)) out.push({ key: `m-${ev.id}-${s}`, data: s, titulo: ev.titulo, detalhe: [nomePlano(ev.plano_conta_id), ev.recorrencia !== 'unica' ? (ev.recorrencia === 'mensal' ? 'mensal' : 'anual') : null, ev.observacao].filter(Boolean).join(' · '), valor: Number(ev.valor), tipo: ev.tipo, origem: 'manual', ev, concluido: ev.recorrencia === 'unica' && ev.concluido })
-    }
-    return out.sort((a, b) => a.data.localeCompare(b.data))
-  }, [q.data, h, custom.ini, custom.fim])
+  const itens = useMemo<Item[]>(() => q.data ? calcularItensProjetados(q.data, hoje, ini, fim) : [], [q.data, h, custom.ini, custom.fim])
 
   const tot = itens.filter(i => !i.concluido).reduce((a, e) => { if (e.tipo === 'despesa') a.d += e.valor; else if (e.tipo === 'receita') a.r += e.valor; return a }, { d: 0, r: 0 })
   const disponivel = (q.data?.contas ?? []).filter(c => c.tipo !== 'cartao_credito').reduce((a, c) => a + Number(c.saldo_atual), 0)

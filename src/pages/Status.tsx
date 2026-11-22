@@ -5,7 +5,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useQuery } from '../hooks/useQuery'
 import { useResumo } from '../hooks/useResumo'
-import { ErrorBox, Field, Kpi, Loading, PageHeader } from '../components/ui'
+import { ErrorBox, Field, Kpi, Loading, PageHeader, Tabs } from '../components/ui'
+import FluxoDiario from './status/FluxoDiario'
+import NCG from './status/NCG'
 import { BarrasHorizontais, ReceitaDespesaChart, SERIES } from '../components/charts'
 import { Gauge, Anel } from '../components/Gauge'
 import { brl, firstDayOfMonth, fmtDate, fmtDateTime, mesLabel, pct, todayISO } from '../lib/format'
@@ -16,6 +18,7 @@ export default function Status() {
   const ws = workspace!.id
   const resumo = useResumo()
   const [pilar, setPilar] = useState(0)
+  const [aba, setAba] = useState<'geral' | 'fluxo' | 'ncg'>('geral')
   const [ini, setIni] = useState(firstDayOfMonth())
   const [fim, setFim] = useState(todayISO())
 
@@ -66,8 +69,14 @@ export default function Status() {
 
   return (
     <div>
-      <PageHeader crumb="Visão" title="Status Atual" actions={<div className="text-xs text-muted">{hist.data?.sinc ? `Dados bancários atualizados em ${fmtDateTime(hist.data.sinc)}` : 'Sem contas conectadas'}</div>} />
+      <PageHeader crumb="Visão" title="Status Atual" actions={<>
+        <Tabs tabs={[{ key: 'geral', label: 'Visão geral' }, { key: 'fluxo', label: 'Fluxo Diário' }, { key: 'ncg', label: 'NCG' }]} value={aba} onChange={setAba} />
+        <div className="text-xs text-muted">{hist.data?.sinc ? `Dados bancários atualizados em ${fmtDateTime(hist.data.sinc)}` : 'Sem contas conectadas'}</div>
+      </>} />
 
+      {aba === 'fluxo' && <FluxoDiario />}
+      {aba === 'ncg' && <NCG />}
+      {aba === 'geral' && <>
       {/* 1. Filtro de período */}
       <div className="card p-3 flex flex-wrap items-end gap-3 mb-4 no-print">
         <div className="flex items-center gap-1 text-muted text-xs font-bold uppercase pr-2"><Filter size={14} /> Período</div>
@@ -126,6 +135,7 @@ export default function Status() {
           </ul>
         </div>
       )}
+      </>}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { CreditCard, CalendarDays, Plus, Pencil, Trash2, CheckCircle2, Repeat, Settings2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -30,6 +30,13 @@ export default function Agenda() {
   const q = useQuery(() => carregarAgenda(ws, ini, fim), [ws, h, custom.ini, custom.fim])
 
   const itens = useMemo<Item[]>(() => q.data ? calcularItensProjetados(q.data, hoje, ini, fim) : [], [q.data, h, custom.ini, custom.fim])
+
+  // Compromissos únicos quitados automaticamente (lançamento encontrado no extrato) são marcados como concluídos no banco.
+  useEffect(() => {
+    if (!podeEditar) return
+    const ids = itens.filter(i => i.conciliado && i.ev && i.ev.recorrencia === 'unica' && !i.ev.concluido).map(i => i.ev!.id)
+    if (ids.length) supabase.from('agenda_eventos').update({ concluido: true }).in('id', ids).then(() => q.refetch())
+  }, [itens]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const tot = itens.filter(i => !i.concluido).reduce((a, e) => { if (e.tipo === 'despesa') a.d += e.valor; else if (e.tipo === 'receita') a.r += e.valor; return a }, { d: 0, r: 0 })
   const disponivel = (q.data?.contas ?? []).filter(c => c.tipo !== 'cartao_credito').reduce((a, c) => a + Number(c.saldo_atual), 0)
@@ -98,7 +105,7 @@ export default function Agenda() {
                     <td className="num whitespace-nowrap w-28">{fmtDate(e.data)}<div className="text-[11px] text-muted">{new Date(e.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}</div></td>
                     <td className="w-10"><div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-ink/70">{e.origem === 'fatura' ? <CreditCard size={16} /> : e.ev?.recorrencia !== 'unica' ? <Repeat size={16} /> : <CalendarDays size={16} />}</div></td>
                     <td><div className="font-bold">{e.titulo}</div><div className="text-xs text-muted">{e.detalhe}</div></td>
-                    <td><Badge tone={e.origem === 'fatura' ? 'red' : 'blue'}>{e.origem === 'fatura' ? (e.ajuste?.valor != null ? 'Fatura (ajustada)' : 'Fatura de cartão') : 'Compromisso'}</Badge></td>
+                    <td>{e.atrasadoDesde ? <Badge tone="amber">Atrasado</Badge> : e.conciliado ? <Badge tone="green">Quitado</Badge> : <Badge tone={e.origem === 'fatura' ? 'red' : e.origem === 'projecao' ? 'gray' : 'blue'}>{e.origem === 'fatura' ? (e.ajuste?.valor != null ? 'Fatura (ajustada)' : 'Fatura de cartão') : e.origem === 'projecao' ? 'Projeção' : 'Compromisso'}</Badge>}</td>
                     <td className="text-right"><MoneyCell v={e.valor} tipo={e.tipo} /></td>
                     <td className="text-right w-32 whitespace-nowrap">
                       {e.origem === 'fatura' ? (podeEditar ? <>

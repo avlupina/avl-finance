@@ -36,19 +36,19 @@ export default function FluxoDiario() {
     const real = calcularFluxoRealizado(d.real, ini < hojeISO ? ini : hojeISO, hojeISO, true, true)
     const realPorDia = new Map(real.dias.map(x => [x.data, x]))
     const itens = d.proj ? calcularItensProjetados(d.proj, hoje, hoje, dataLocal(fim)).filter(i => !i.concluido && i.tipo !== 'transferencia') : []
-    const projPorDia = new Map<string, { entradas: number; saidas: number; n: number }>()
-    for (const i of itens) { const x = projPorDia.get(i.data) ?? { entradas: 0, saidas: 0, n: 0 }; if (i.tipo === 'receita') x.entradas += i.valor; else x.saidas += i.valor; x.n++; projPorDia.set(i.data, x) }
+    const projPorDia = new Map<string, { entradas: number; saidas: number; n: number; titulos: string[] }>()
+    for (const i of itens) { const x = projPorDia.get(i.data) ?? { entradas: 0, saidas: 0, n: 0, titulos: [] }; if (i.tipo === 'receita') x.entradas += i.valor; else x.saidas += i.valor; x.n++; x.titulos.push(`${i.titulo}${i.atrasadoDesde ? ' (atrasado)' : ''}`); projPorDia.set(i.data, x) }
     // Saldo de partida: realizado no início do período ou, se o período começa no futuro, saldo de hoje + projetado até a véspera.
     let saldo = ini <= hojeISO ? real.saldoInicial : real.saldoFinal
     if (ini > hojeISO) for (const [data, x] of projPorDia) if (data < ini) saldo += x.entradas - x.saidas
-    const dias: { data: string; saldoInicial: number; entradas: number; saidas: number; saldoFinal: number; n: number; projetado: boolean }[] = []
+    const dias: { data: string; saldoInicial: number; entradas: number; saidas: number; saldoFinal: number; n: number; projetado: boolean; titulos: string[] }[] = []
     for (let dt = dataLocal(ini); iso(dt) <= fim; dt = addDias(dt, 1)) {
       const k = iso(dt)
       const r = k <= hojeISO ? realPorDia.get(k) : undefined
       const pj = k >= hojeISO ? projPorDia.get(k) : undefined
       const entradas = (r?.entradas ?? 0) + (pj?.entradas ?? 0), saidas = (r?.saidas ?? 0) + (pj?.saidas ?? 0)
       const saldoInicial = saldo; saldo += entradas - saidas
-      dias.push({ data: k, saldoInicial, entradas, saidas, saldoFinal: saldo, n: (r?.linhas.length ?? 0) + (pj?.n ?? 0), projetado: k > hojeISO })
+      dias.push({ data: k, saldoInicial, entradas, saidas, saldoFinal: saldo, n: (r?.linhas.length ?? 0) + (pj?.n ?? 0), projetado: k > hojeISO, titulos: pj?.titulos ?? [] })
     }
     const entradas = dias.reduce((a, x) => a + x.entradas, 0), saidas = dias.reduce((a, x) => a + x.saidas, 0)
     const minimo = dias.reduce((a, x) => x.saldoFinal < a.saldoFinal ? x : a, dias[0])
@@ -83,7 +83,7 @@ export default function FluxoDiario() {
               <tbody>
                 {m.dias.map(d => { const res = d.entradas - d.saidas; const semMov = d.n === 0; return (
                   <tr key={d.data} className={`${semMov ? 'text-muted' : ''} ${d.data === hojeISO ? 'bg-brand/5' : ''}`}>
-                    <td className="num whitespace-nowrap">{fmtDate(d.data)} <span className="text-[11px] text-muted ml-1">{dataLocal(d.data).toLocaleDateString('pt-BR', { weekday: 'short' })}</span>{d.data === hojeISO && <span className="text-[10px] font-bold uppercase text-brand ml-2">hoje</span>}{d.projetado && !semMov && <span className="text-[10px] uppercase text-muted ml-2">projetado</span>}</td>
+                    <td className="num whitespace-nowrap">{fmtDate(d.data)} <span className="text-[11px] text-muted ml-1">{dataLocal(d.data).toLocaleDateString('pt-BR', { weekday: 'short' })}</span>{d.data === hojeISO && <span className="text-[10px] font-bold uppercase text-brand ml-2">hoje</span>}{d.projetado && !semMov && <span className="text-[10px] uppercase text-muted ml-2">projetado</span>}{d.titulos.length > 0 && <div className="text-[11px] text-muted font-normal whitespace-normal max-w-xs" title={d.titulos.join(' · ')}>{d.titulos.slice(0, 3).join(' · ')}{d.titulos.length > 3 ? ` +${d.titulos.length - 3}` : ''}</div>}</td>
                     <td className="num">{brl(d.saldoInicial)}</td>
                     <td className="num text-pos">{d.entradas ? brl(d.entradas) : <span className="text-muted">—</span>}</td>
                     <td className="num text-neg">{d.saidas ? brl(d.saidas) : <span className="text-muted">—</span>}</td>
@@ -93,7 +93,7 @@ export default function FluxoDiario() {
                 <tr className="bg-surface/60 font-bold"><td>Total do período</td><td className="num">{brl(m.saldoInicial)}</td><td className="num text-pos">{brl(m.entradas)}</td><td className="num text-neg">{brl(m.saidas)}</td><td className="num">{brl(m.saldoFinal)}</td><td className={`num ${m.entradas - m.saidas >= 0 ? 'text-pos' : 'text-neg'}`}>{brl(m.entradas - m.saidas)}</td></tr>
               </tbody>
             </table>
-            <div className="px-4 py-2 text-xs text-muted border-t border-line">Até hoje: lançamentos efetivados nas contas. A partir de hoje: faturas de cartão por ciclo, compromissos da Agenda e Projeções previstas. Dias sem movimento carregam o saldo.</div>
+            <div className="px-4 py-2 text-xs text-muted border-t border-line">Até hoje: lançamentos efetivados nas contas. A partir de hoje: faturas de cartão por ciclo, compromissos da Agenda (inclusive vencidos e ainda em aberto, posicionados em hoje) e todas as Projeções previstas. Compromissos com lançamento equivalente no extrato são tratados como quitados. Dias sem movimento carregam o saldo.</div>
           </div>
         )}
       </>)}

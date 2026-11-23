@@ -80,7 +80,7 @@ export function calcularFluxoRealizado(d: FluxoDados, ini: string, fim: string, 
 
 export interface AgendaEvento { id: string; data: string; titulo: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; plano_conta_id: string | null; recorrencia: 'unica' | 'mensal' | 'anual'; concluido: boolean; observacao: string | null }
 export interface Ajuste { id: string; chave: string; valor: number | null; data: string | null; titulo: string | null; observacao: string | null; oculto: boolean }
-export interface ItemProjetado { key: string; data: string; titulo: string; detalhe: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; origem: 'fatura' | 'manual' | 'projecao'; ev?: AgendaEvento; ajuste?: Ajuste; conta?: Conta; concluido?: boolean }
+export interface ItemProjetado { key: string; data: string; titulo: string; detalhe: string; valor: number; tipo: 'receita' | 'despesa' | 'transferencia'; origem: 'fatura' | 'manual' | 'projecao'; ev?: AgendaEvento; ajuste?: Ajuste; conta?: Conta; concluido?: boolean; /** quitado automaticamente: achou lançamento efetivado de mesmo valor perto da data */ conciliado?: boolean; /** data original de um item vencido e em aberto, reposicionado para hoje */ atrasadoDesde?: string }
 export interface AgendaDados { contas: Conta[]; eventos: AgendaEvento[]; planos: PlanoConta[]; ajustes: Ajuste[]; tx: { conta_id: string; data: string; valor: number; tipo: string }[]; projecoes: Projecao[] }
 
 export async function carregarAgenda(ws: string, ini: Date, fim: Date, comProjecoes = false): Promise<AgendaDados> {
@@ -96,10 +96,31 @@ export async function carregarAgenda(ws: string, ini: Date, fim: Date, comProjec
   return { contas: c.data as Conta[], eventos: e.data as AgendaEvento[], planos: (p.data ?? []) as PlanoConta[], ajustes: (aj.data ?? []) as Ajuste[], tx: (tx.data ?? []) as AgendaDados['tx'], projecoes: (pr.data ?? []) as Projecao[] }
 }
 
-/** Itens projetados entre ini e fim: faturas de cartão por ciclo de fechamento, compromissos manuais (com recorrência) e, se carregadas, Projeções previstas. */
+/**
+ * Itens projetados entre ini e fim: faturas de cartão por ciclo de fechamento, compromissos manuais (com recorrência) e, se carregadas, Projeções previstas.
+ * Compromissos vencidos e não concluídos: se existe lançamento efetivado de mesmo valor e tipo até 5 dias da data, são tratados como quitados (`conciliado`);
+ * caso contrário, quando o período inclui hoje, entram em hoje como atrasados (`atrasadoDesde`), pois ainda exigem caixa.
+ */
 export function calcularItensProjetados(d: AgendaDados, hoje: Date, ini: Date, fim: Date): ItemProjetado[] {
   const out: ItemProjetado[] = []
+  const sHoje = iso(hoje)
   const dentro = (s: string) => s >= iso(ini) && s <= iso(fim)
+  const hojeNoPeriodo = dentro(sHoje)
+  const limiteAtraso = iso(addDias(hoje, -60))
+  const usados = new Set<number>()
+  const acharPago = (data: string, valor: number, tipo: string) => {
+    if (data > sHoje) return false
+    const dt = dataLocal(data).getTime()
+    const idx = d.tx.findIndex((t, i) => !usados.has(i) && t.tipo === tipo && Math.abs(Number(t.valor) - valor) <= 0.05 && Math.abs(dataLocal(t.data).getTime() - dt) <= 5 * 86400000)
+    if (idx < 0) return false
+    usados.add(idx); return true
+  }
+  /** Reposiciona um item vencido/aberto para hoje (se cabível). Retorna null para descartar. */
+  const posicionar = (data: string): { data: string; atrasadoDesde?: string } | null => {
+    if (dentro(data)) return { data }
+    if (data < iso(ini) && data < sHoje && data >= limiteAtraso && hojeNoPeriodo) return { data: sHoje, atrasadoDesde: data }
+    return null
+  }
   const mesesDiff = (a: Date, b: Date) => (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth())
   const ajusteDe = (chave: string) => d.ajustes.find(a => a.chave === chave)
   for (const c of d.contas.filter(x => x.tipo === 'cartao_credito')) {
@@ -134,15 +155,21 @@ export function calcularItensProjetados(d: AgendaDados, hoje: Date, ini: Date, f
     const datas: string[] = []
     if (ev.recorrencia === 'unica') datas.push(ev.data)
     else for (let k = 0; k <= 36; k++) { const dt = ev.recorrencia === 'mensal' ? new Date(base.getFullYear(), base.getMonth() + k, Math.min(base.getDate(), new Date(base.getFullYear(), base.getMonth() + k + 1, 0).getDate()), 12) : new Date(base.getFullYear() + k, base.getMonth(), base.getDate(), 12); const s = iso(dt); if (s > iso(fim)) break; datas.push(s) }
-    for (const s of datas) if (dentro(s)) out.push({ key: `m-${ev.id}-${s}`, data: s, titulo: ev.titulo, detalhe: [nomePlano(ev.plano_conta_id), ev.recorrencia !== 'unica' ? (ev.recorrencia === 'mensal' ? 'mensal' : 'anual') : null, ev.observacao].filter(Boolean).join(' · '), valor: Number(ev.valor), tipo: ev.tipo, origem: 'manual', ev, concluido: ev.recorrencia === 'unica' && ev.concluido })
+    for (const s of datas) {
+      const concluido = ev.recorrencia === 'unica' && ev.concluido
+      const conciliado = !concluido && ev.tipo !== 'transferencia' && s <= sHoje && acharPago(s, Number(ev.valor), ev.tipo)
+      const pos = (concluido || conciliado) ? (dentro(s) ? { data: s } : null) : posicionar(s)
+      if (!pos) continue
+      out.push({ key: `m-${ev.id}-${s}`, data: pos.data, titulo: ev.titulo, detalhe: [nomePlano(ev.plano_conta_id), ev.recorrencia !== 'unica' ? (ev.recorrencia === 'mensal' ? 'mensal' : 'anual') : null, conciliado ? 'quitado — lançamento encontrado no extrato' : pos.atrasadoDesde ? `vencido em ${fmtDate(pos.atrasadoDesde)} e em aberto` : null, ev.observacao].filter(Boolean).join(' · '), valor: Number(ev.valor), tipo: ev.tipo, origem: 'manual', ev, concluido: concluido || conciliado, conciliado, atrasadoDesde: pos.atrasadoDesde })
+    }
   }
   for (const p of d.projecoes) {
     if (p.tipo === 'transferencia') continue
     // sem data prevista: considera o último dia da competência (pior caso para caixa, dentro do mês)
     const comp = dataLocal(p.competencia)
     const data = p.data_prevista ?? iso(new Date(comp.getFullYear(), comp.getMonth() + 1, 0, 12))
-    if (!dentro(data)) continue
-    out.push({ key: `p-${p.id}`, data, titulo: p.descricao, detalhe: [nomePlano(p.plano_conta_id), 'projeção'].filter(Boolean).join(' · '), valor: Number(p.valor), tipo: p.tipo, origem: 'projecao' })
+    const pos = posicionar(data); if (!pos) continue
+    out.push({ key: `p-${p.id}`, data: pos.data, titulo: p.descricao, detalhe: [nomePlano(p.plano_conta_id), 'projeção', pos.atrasadoDesde ? `prevista para ${fmtDate(pos.atrasadoDesde)} e em aberto` : null].filter(Boolean).join(' · '), valor: Number(p.valor), tipo: p.tipo, origem: 'projecao', atrasadoDesde: pos.atrasadoDesde })
   }
   return out.sort((a, b) => a.data.localeCompare(b.data))
 }
